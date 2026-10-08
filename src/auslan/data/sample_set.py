@@ -77,7 +77,7 @@ class SampleSet:
 
     @property
     def mostly_binarised(self) -> bool:
-        return bool(self._binarised.mean() > 0.5)
+        return bool(self._binarised.any() and self._binarised.mean() > 0.5)
 
     def landmark_array(self) -> np.ndarray:
         """All landmarks at once, in row order, without decoding any image."""

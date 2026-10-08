@@ -48,4 +48,7 @@ class CnnClassifier(ImageClassifier):
 
 @register("m3_cnn", seeded=True)
 def _cnn(**options: object) -> CnnClassifier:
+    # Random weights need more updates than a fine-tuned network: validation F1 was still
+    # rising after 1,000 steps, so the budget is larger (early stopping still applies).
+    options.setdefault("max_steps", 3000)
     return CnnClassifier("m3_cnn", **options)
