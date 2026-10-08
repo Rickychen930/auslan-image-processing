@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import copy
 import logging
+import math
 import random
 from typing import Self
 
@@ -19,7 +20,6 @@ from torch.nn import functional as F
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader, Dataset
-from torchvision.transforms import v2
 
 from auslan.data.sample_set import SampleSet
 from auslan.evaluation.metrics import macro_f1
@@ -31,7 +31,9 @@ IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
 MIN_EVAL_EVERY = 25  # validate at least this many steps apart, so early stopping is not twitchy
 MAX_EVAL_EVERY = 250
-WHITE, BLACK = 255, 0
+ROTATION_DEGREES = 10
+CROP_SIDE = (0.9, 1.0)  # fraction of the image side kept by the random crop
+JITTER = 0.2  # brightness, contrast and saturation vary by up to this fraction
 
 
 def default_device() -> str:
@@ -50,7 +52,7 @@ class TorchClassifier:
         self,
         name: str,
         *,
-        max_steps: int = 1500,
+        max_steps: int = 1000,
         max_epochs: int = 30,
         min_steps: int = 300,
         batch_size: int = 64,
@@ -73,6 +75,10 @@ class TorchClassifier:
 
     def _dataset(self, samples: SampleSet, train: bool) -> Dataset:
         raise NotImplementedError
+
+    def _prepare(self, batch: torch.Tensor, train: bool) -> torch.Tensor:
+        """Turn a loaded batch (already on the device) into network input."""
+        return batch
 
     def fit(
         self, train: SampleSet, val: SampleSet | None = None, init: Classifier | None = None
@@ -146,7 +152,8 @@ class TorchClassifier:
         while step < budget and stale < self._patience:
             for x, y in loader:
                 model.train()
-                loss = F.cross_entropy(model(x.to(self._device)), y.to(self._device))
+                inputs = self._prepare(x.to(self._device), train=True)
+                loss = F.cross_entropy(model(inputs), y.to(self._device))
                 optimiser.zero_grad()
                 loss.backward()
                 optimiser.step()
@@ -180,39 +187,78 @@ class TorchClassifier:
         outputs = []
         with torch.no_grad():
             for x, _ in loader:
-                outputs.append(model(x.to(self._device)).float().cpu())
+                outputs.append(model(self._prepare(x.to(self._device), train=False)).float().cpu())
         return torch.cat(outputs)
 
 
 class _ImageDataset(Dataset):
-    def __init__(self, samples: SampleSet, transform: v2.Compose) -> None:
-        self._samples, self._transform = samples, transform
+    """Decoded crops as uint8 tensors; augmentation happens later, on the whole batch."""
+
+    def __init__(self, samples: SampleSet) -> None:
+        self._samples = samples
 
     def __len__(self) -> int:
         return len(self._samples)
 
     def __getitem__(self, index: int):
-        return self._transform(self._samples[index].crop), int(self._samples.labels[index])
+        crop = torch.from_numpy(self._samples[index].crop).permute(2, 0, 1)
+        return crop, int(self._samples.labels[index])
+
+
+def _uniform(n: int, low: float, high: float, device: torch.device, *shape: int) -> torch.Tensor:
+    return low + (high - low) * torch.rand(n, *shape, device=device)
+
+
+def augment_batch(images: torch.Tensor, fill: float) -> torch.Tensor:
+    """Random rotation, crop and shift plus brightness, contrast and saturation jitter.
+
+    ``images`` is float in [0, 1]. There is no flip: it would swap the two hands. Corners that
+    the rotation exposes are filled with ``fill`` (the page colour), not with ink.
+    """
+    n, device = len(images), images.device
+    angle = _uniform(n, -1, 1, device) * math.radians(ROTATION_DEGREES)
+    side = _uniform(n, *CROP_SIDE, device)
+    shift = _uniform(n, -1, 1, device, 2) * (1 - side)[:, None]  # keeps the crop inside the image
+    theta = torch.stack(
+        [
+            torch.stack([side * angle.cos(), -side * angle.sin(), shift[:, 0]], dim=1),
+            torch.stack([side * angle.sin(), side * angle.cos(), shift[:, 1]], dim=1),
+        ],
+        dim=1,
+    )
+    grid = F.affine_grid(theta, list(images.shape), align_corners=False)
+    out = F.grid_sample(images - fill, grid, padding_mode="zeros", align_corners=False) + fill
+
+    jitter = [_uniform(n, 1 - JITTER, 1 + JITTER, device)[:, None, None, None] for _ in range(3)]
+    brightness, contrast, saturation = jitter
+    out = out * brightness
+    mean = out.mean(dim=(1, 2, 3), keepdim=True)
+    out = (out - mean) * contrast + mean
+    grey = out.mean(dim=1, keepdim=True)
+    return ((out - grey) * saturation + grey).clamp(0, 1)
 
 
 class ImageClassifier(TorchClassifier):
-    """Image models. Augmentation never flips: a flip would swap the two hands."""
+    """Image models with ImageNet normalisation and (optionally) batch augmentation."""
 
     def __init__(self, name: str, *, augment: bool = True, **options: object) -> None:
         super().__init__(name, **options)
         self._augment = augment
+        self._fill = 0.0
+        self._mean = torch.tensor(IMAGENET_MEAN).view(1, 3, 1, 1)
+        self._std = torch.tensor(IMAGENET_STD).view(1, 3, 1, 1)
+
+    def fit(
+        self, train: SampleSet, val: SampleSet | None = None, init: Classifier | None = None
+    ) -> Self:
+        self._fill = 1.0 if train.mostly_binarised else 0.0  # white pages stay white when rotated
+        return super().fit(train, val, init)
 
     def _dataset(self, samples: SampleSet, train: bool) -> Dataset:
-        steps: list = [v2.ToImage()]
+        return _ImageDataset(samples)
+
+    def _prepare(self, batch: torch.Tensor, train: bool) -> torch.Tensor:
+        images = batch.float() / 255
         if train and self._augment:
-            # Rotation exposes corners: fill them with the page colour, not with ink.
-            fill = WHITE if samples.mostly_binarised else BLACK
-            steps += [
-                v2.RandomResizedCrop(
-                    samples.image_size, scale=(0.8, 1.0), ratio=(0.9, 1.1), antialias=True
-                ),
-                v2.RandomRotation(10, fill=fill),
-                v2.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.02),
-            ]
-        steps += [v2.ToDtype(torch.float32, scale=True), v2.Normalize(IMAGENET_MEAN, IMAGENET_STD)]
-        return _ImageDataset(samples, v2.Compose(steps))
+            images = augment_batch(images, self._fill)
+        return (images - self._mean.to(images.device)) / self._std.to(images.device)

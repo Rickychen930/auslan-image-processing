@@ -8,6 +8,7 @@ from auslan.methods import create, method_names
 from auslan.methods.base import FeatureClassifier
 from auslan.methods.m1_skin import empty_mask_rate, hand_mask, shape_features
 from auslan.methods.m5_landmarks import CONTACT_FEATURES, feature_count, landmark_features
+from auslan.methods.torch_base import augment_batch
 
 FAST_TORCH = {"max_steps": 80, "device": "cpu", "batch_size": 16, "lr": 2e-3}
 # method name -> (constructor options, minimum toy accuracy)
@@ -151,3 +152,16 @@ def test_transfer_copies_the_backbone_and_replaces_the_head(make_sample_set):
     source._transfer(fresh, source)
     copied = torch.equal(fresh.features[0][0].weight, source._model.features[0][0].weight.cpu())
     assert copied and fresh.head[-1].out_features == 3
+
+
+def test_augmentation_keeps_page_colour_and_never_mirrors():
+    torch.manual_seed(0)
+    white_page = torch.ones(8, 3, 32, 32)
+    assert torch.allclose(augment_batch(white_page, fill=1.0), white_page, atol=0.35)
+    assert augment_batch(white_page, fill=1.0).min() > 0.6  # no black corners from rotation
+
+    left_bright = torch.zeros(16, 3, 32, 32)
+    left_bright[..., :16] = 1.0
+    out = augment_batch(left_bright, fill=0.0)
+    assert out.shape == left_bright.shape and out.min() >= 0 and out.max() <= 1
+    assert (out[..., :16].mean(dim=(1, 2, 3)) > out[..., 16:].mean(dim=(1, 2, 3))).all()
