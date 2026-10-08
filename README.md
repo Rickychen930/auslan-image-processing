@@ -121,6 +121,7 @@ differs, so they can be reported honestly.
 | Topic | What the code does | Why |
 |-------|--------------------|-----|
 | Image size | CNNs read 128 x 128 crops by default; E7 covers 224, 64, 32 | the report's risk register allows it for laptop-sized training |
+| Training budget | neural networks train for at most 1,000 steps (about 5 epochs of ASL), M3 for 3,000, with early stopping on the validation images; the classical methods choose C or k on the same images | M3's validation F1 was still rising at 1,000 steps (0.81 against 0.97 at 3,000); fine-tuned networks converge within 1,000 |
 | Amount of data | the near-duplicate step (4 of 64 hash bits) leaves about 16,980 ASL images and 11,913 Kaggle Auslan images, so "all data" is roughly 320 images per letter instead of 1,400 | consecutive video frames are nearly identical; keeping them would leak between splits |
 | M5 on Kaggle drawings | MediaPipe finds no hand in the binarised Kaggle images, so M5 is reported under P1 only | the case the report's risk register describes; `detection_rates.md` has the numbers |
 | M1 on Roboflow | its headline test uses the colour photo ("Roboflow before T" in the report); the other methods see the styled image | skin thresholds need colour |
