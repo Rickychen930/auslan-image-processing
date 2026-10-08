@@ -141,18 +141,18 @@ class HandCropper:
         height, width = rgb.shape[:2]
         detected = self._detector.detect(rgb).hands[:MAX_HANDS]
         hands = sorted(detected, key=lambda h: float(h[0, 0]))  # wrist x, not handedness label
-        if hands:
-            box, used_fallback = union_box(hands, self._padding, height, width), False
-        else:
-            region = self._fallback.box(rgb)
-            box = (
-                _pad_box(region, self._padding, height, width) if region else (0, 0, width, height)
-            )
-            used_fallback = True
         landmarks = np.zeros((MAX_HANDS, LANDMARKS_PER_HAND, 3), np.float32)
         for slot, hand in enumerate(hands):
             landmarks[slot] = hand
-        return CropResult(self._square_crop(rgb, box), landmarks, len(hands), used_fallback)
+        if hands:
+            box = union_box(hands, self._padding, height, width)
+            return CropResult(self._square_crop(rgb, box), landmarks, len(hands), False)
+        region = self._fallback.box(rgb)
+        if region is None:  # keep the whole frame, squeezed to a square instead of padded
+            whole = cv2.resize(rgb, (self._size, self._size), interpolation=cv2.INTER_AREA)
+            return CropResult(whole, landmarks, 0, True)
+        box = _pad_box(region, self._padding, height, width)
+        return CropResult(self._square_crop(rgb, box), landmarks, 0, True)
 
     def _square_crop(self, rgb: np.ndarray, box: Box) -> np.ndarray:
         height, width = rgb.shape[:2]
