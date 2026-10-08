@@ -18,12 +18,14 @@ from auslan.evaluation.speed import crop_ms
 from auslan.experiments import EXPERIMENTS, plan
 from auslan.methods import method_names
 from auslan.preprocessing.factory import build_cropper
-from auslan.reporting import CROP_TIMING_FILE, build_report
+from auslan.report import CROP_TIMING_FILE, build_report
 from auslan.results import PROTOCOLS, ResultStore
 from auslan.runner import Runner
 
 log = logging.getLogger("auslan")
 PREPARE_ORDER = ("asl_alphabet", "asl_alphabet_test", "auslan_kaggle", "auslan_roboflow")
+# A test set must not contain images of the set the model learns from.
+OVERLAP_REFERENCE = {"asl_alphabet_test": "asl_alphabet", "auslan_roboflow": "auslan_kaggle"}
 
 
 def _download(settings: Settings, args: argparse.Namespace) -> None:
@@ -47,8 +49,8 @@ def _prepare(settings: Settings, args: argparse.Namespace) -> None:
             log.warning("skipping %s: %s does not exist", name, spec.root)
             continue
         reference = None
-        if name == "auslan_roboflow":  # keep the independent test free of Kaggle images
-            reference = pd.read_csv(settings.work_dir / "auslan_kaggle" / "hashed.csv")
+        if name in OVERLAP_REFERENCE:
+            reference = pd.read_csv(settings.work_dir / OVERLAP_REFERENCE[name] / "hashed.csv")
         factory = partial(build_cropper, settings.models_dir, spec.fallback, settings.crop_size)
         prepare_source(
             spec,
@@ -57,6 +59,7 @@ def _prepare(settings: Settings, args: argparse.Namespace) -> None:
             seed=settings.split_seed,
             max_hamming=settings.near_duplicate_hamming,
             workers=settings.workers,
+            cropper_key=f"{spec.fallback}-{settings.crop_size}",
             reference=reference,
         )
 
@@ -76,8 +79,12 @@ def _run(settings: Settings, args: argparse.Namespace) -> None:
 
 
 def _speed(settings: Settings, args: argparse.Namespace) -> None:
-    """Time hand detection plus cropping on Roboflow photos (the same for every method)."""
-    paths = pd.read_csv(settings.work_dir / "auslan_roboflow" / "hashed.csv")["path"].tolist()
+    """Time hand detection plus cropping on colour photos (the same for every method)."""
+    name = "auslan_roboflow"
+    if not (settings.work_dir / name / "hashed.csv").exists():
+        log.warning("Roboflow is not prepared; timing on ASL Alphabet Test photos instead")
+        name = "asl_alphabet_test"
+    paths = pd.read_csv(settings.work_dir / name / "hashed.csv")["path"].tolist()
     cropper = build_cropper(settings.models_dir, "skin", settings.crop_size)
     milliseconds = crop_ms(cropper, paths)
     target = settings.artifacts_dir / CROP_TIMING_FILE
@@ -87,7 +94,7 @@ def _speed(settings: Settings, args: argparse.Namespace) -> None:
 
 
 def _report(settings: Settings, args: argparse.Namespace) -> None:
-    folder = build_report(ResultStore(settings.artifacts_dir), settings.artifacts_dir)
+    folder = build_report(ResultStore(settings.artifacts_dir), settings)
     log.info("report written to %s", folder)
 
 

@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 
 from auslan.config import Settings
+from auslan.methods import create
 from auslan.results import ResultStore, RunSpec
 from auslan.runner import Runner
 
@@ -42,7 +43,7 @@ def test_p1_scores_the_held_out_split_and_the_cross_dataset_set(setup):
     table = store.table()
     assert set(table["test_set"]) == {"asl_test", "asl_cross"}
     assert (table["n_train"] == 24).all()  # 8 per letter x 3 letters
-    assert table["macro_f1"].between(0, 1).all()
+    assert (table["macro_f1"][table["test_set"] == "asl_test"] > 0.8).all()
 
 
 def test_finished_runs_are_not_repeated(setup):
@@ -59,6 +60,7 @@ def test_p2_draws_k_per_letter_and_scores_three_test_sets(setup):
     table = store.table()
     assert set(table["test_set"]) == {"kaggle_test", "roboflow", "roboflow_raw"}
     assert (table["n_train"] == 15).all()
+    assert (table["macro_f1"] > 0.8).all()  # the toy letters are easy to tell apart
     y_true, proba = store.predictions("m5_landmarks_svm-P2-k5-s0", "roboflow")
     assert proba.shape == (12, 26) and len(y_true) == 12
 
@@ -78,16 +80,27 @@ def test_p3_is_skipped_for_methods_that_cannot_transfer(setup):
     assert store.table().empty
 
 
-def test_p3_pretrains_on_asl_once_and_reuses_the_weights(setup):
+def test_p3_pretrains_on_asl_once_per_method_and_seed(setup):
     runner, store, settings = setup
-    spec = RunSpec("m3_cnn", "P3", 5, 0, options=FAST, tag="fast")
-    assert runner.run(spec)
-    saved = sorted((settings.artifacts_dir / "pretrained").glob("*.joblib"))
+    assert runner.run(RunSpec("m3_cnn", "P3", 5, 0, options=FAST, tag="fast"))
+    saved = list((settings.artifacts_dir / "pretrained").glob("*.joblib"))
     assert len(saved) == 1
     stamp = saved[0].stat().st_mtime_ns
-    runner.run(RunSpec("m3_cnn", "P3", 5, 0, options=FAST, tag="fast2"))
-    assert saved[0].stat().st_mtime_ns == stamp or len(list(saved[0].parent.glob("*.joblib"))) == 2
+    # same method, options and seed, different k: the ASL weights must be reused, not retrained
+    assert runner.run(RunSpec("m3_cnn", "P3", 10, 0, options=FAST, tag="fast"))
+    assert len(list(saved[0].parent.glob("*.joblib"))) == 1
+    assert saved[0].stat().st_mtime_ns == stamp
     assert np.isfinite(store.table()["macro_f1"]).all()
+
+
+def test_only_m1_is_tested_on_the_unstyled_colour_photos(setup):
+    runner, _, _ = setup
+    bundle = runner._bundle(32)
+    for method, drawings in (("m1_skin_svm", False), ("m3_cnn", True)):
+        spec = RunSpec(method, "P2", 5, 0)
+        tests = runner._plan(spec, bundle, create(method))[2]
+        assert tests["roboflow"][0].binarised is drawings
+        assert not tests["roboflow_raw"][0].binarised
 
 
 def test_missing_dataset_error_names_the_fix(tmp_path):

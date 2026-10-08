@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import pickle
 import time
-from dataclasses import replace
+from pathlib import Path
 
 import joblib
 import numpy as np
@@ -12,7 +14,7 @@ import numpy as np
 from auslan.config import Settings
 from auslan.data.bundle import DataBundle
 from auslan.data.sample_set import SampleSet
-from auslan.data.splits import sample_k_shot, validation_subset
+from auslan.data.splits import sample_k_shot
 from auslan.evaluation.metrics import accuracy, macro_f1, top_k_accuracy
 from auslan.evaluation.speed import classify_ms
 from auslan.methods import Classifier, create
@@ -24,6 +26,7 @@ TOP_K = 3  # a tutor can offer three letters
 # Landmark methods learn nothing from images where MediaPipe finds no hand. The report's risk
 # register says to report M5 under P1 only if detection on the Kaggle drawings is too low.
 MIN_DETECTION = 0.10
+MAIN_TEST = {"P1": "asl_cross", "P2": "roboflow", "P3": "roboflow"}  # the set whose speed is timed
 Plan = tuple[SampleSet, SampleSet, dict[str, SampleSet]]  # train, validation, test sets
 
 
@@ -47,8 +50,9 @@ class Runner:
         if spec.protocol == "P3" and not model.supports_transfer:
             log.info("skip %s: hand-crafted features cannot transfer, so P3 equals P2", spec.key)
             return False
-        bundle = self._bundle(spec.image_size or self._settings.image_size)
-        train, val, tests = self._plan(spec, bundle)
+        size = spec.image_size or self._settings.image_size
+        bundle = self._bundle(size)
+        train, val, tests = self._plan(spec, bundle, model)
         if (
             model.uses_landmarks
             and spec.protocol != "P1"
@@ -56,7 +60,7 @@ class Runner:
         ):
             log.warning("skip %s: hands are found in too few training images", spec.key)
             return False
-        init = self._asl_pretrained(spec, bundle) if spec.protocol == "P3" else None
+        init = self._asl_pretrained(spec, bundle, size) if spec.protocol == "P3" else None
 
         started = time.perf_counter()
         model.fit(train, val=val, init=init)
@@ -73,26 +77,27 @@ class Runner:
             self._bundles[image_size] = DataBundle(self._settings.work_dir, image_size)
         return self._bundles[image_size]
 
-    def _plan(self, spec: RunSpec, bundle: DataBundle) -> Plan:
+    def _plan(self, spec: RunSpec, bundle: DataBundle, model: Classifier) -> Plan:
         if spec.protocol == "P1":
             tests = {"asl_test": bundle.asl("test"), "asl_cross": bundle.asl_cross()}
             return bundle.asl("train"), bundle.asl("val"), tests
         drawn = sample_k_shot(bundle.kaggle_frame("train"), spec.k, spec.seed)
-        val_frame = validation_subset(
+        # Only 10 validation images per letter, so tuning data stays comparable to k.
+        val_frame = sample_k_shot(
             bundle.kaggle_frame("val"), self._settings.val_per_class, spec.seed
         )
         tests = {
             "kaggle_test": bundle.kaggle("test"),
-            "roboflow": bundle.roboflow(styled=True),  # the main Auslan test
+            # The main Auslan test gets the drawing style T, except for M1, whose skin
+            # thresholds need the colour photo ("Roboflow before T" in the report).
+            "roboflow": bundle.roboflow(styled=not model.needs_colour),
             "roboflow_raw": bundle.roboflow(styled=False),  # E6: without the style transform
         }
         return bundle.kaggle_set(drawn), bundle.kaggle_set(val_frame), tests
 
-    def _asl_pretrained(self, spec: RunSpec, bundle: DataBundle) -> Classifier:
-        """ASL-trained model that P3 starts from, trained once per method, seed and image size."""
-        size = spec.image_size or self._settings.image_size
-        tag = f"-{spec.tag}" if spec.tag else ""
-        path = self._pretrained_dir / f"{spec.method}{tag}-s{spec.seed}-{size}px.joblib"
+    def _asl_pretrained(self, spec: RunSpec, bundle: DataBundle, size: int) -> Classifier:
+        """ASL-trained model that P3 starts from, trained once per method, seed and settings."""
+        path = self._pretrained_path(spec, size)
         if path.exists():
             return joblib.load(path)
         log.info("pretraining %s on ASL (style T applied)", path.stem)
@@ -104,6 +109,10 @@ class Runner:
         joblib.dump(model, path)
         return model
 
+    def _pretrained_path(self, spec: RunSpec, size: int) -> Path:
+        options = hashlib.md5(repr(sorted(spec.options.items())).encode()).hexdigest()[:8]  # noqa: S324
+        return self._pretrained_dir / f"{spec.method}-{options}-s{spec.seed}-{size}px.joblib"
+
     def _evaluate(
         self,
         spec: RunSpec,
@@ -113,10 +122,12 @@ class Runner:
         fit_seconds: float,
     ) -> tuple[list[Result], dict[str, tuple[np.ndarray, np.ndarray]]]:
         n_classes = len(train.label_space)
-        results, predictions = [], {}
-        for name, samples in tests.items():
-            proba = model.predict_proba(samples)
-            predictions[name] = (samples.labels, proba)
+        predictions = {name: (s.labels, model.predict_proba(s)) for name, s in tests.items()}
+        speed = classify_ms(model, tests[MAIN_TEST[spec.protocol]])  # moves torch models to the CPU
+        size_mb = len(pickle.dumps(model)) / 1e6
+        results = []
+        for name, (y_true, proba) in predictions.items():
+            y_pred = proba.argmax(axis=1)
             results.append(
                 Result(
                     key=spec.key,
@@ -127,12 +138,12 @@ class Runner:
                     tag=spec.tag,
                     test_set=name,
                     n_train=len(train),
-                    macro_f1=macro_f1(samples.labels, proba.argmax(axis=1), n_classes),
-                    accuracy=accuracy(samples.labels, proba.argmax(axis=1)),
-                    top3=top_k_accuracy(proba, samples.labels, TOP_K),
+                    macro_f1=macro_f1(y_true, y_pred, n_classes),
+                    accuracy=accuracy(y_true, y_pred),
+                    top3=top_k_accuracy(proba, y_true, TOP_K),
                     fit_seconds=fit_seconds,
-                    ms_classify=0.0,
+                    ms_classify=speed,
+                    model_mb=size_mb,
                 )
             )
-        speed = classify_ms(model, next(reversed(tests.values())))  # last set, moves model to CPU
-        return [replace(r, ms_classify=speed) for r in results], predictions
+        return results, predictions

@@ -58,6 +58,7 @@ class Result:
     top3: float
     fit_seconds: float
     ms_classify: float  # CPU time per frame for features + classifier, excluding cropping
+    model_mb: float  # size of the fitted model when pickled
 
 
 class ResultStore:
@@ -68,9 +69,10 @@ class ResultStore:
         self._log = self._root / "results.jsonl"
         self._predictions = self._root / "predictions"
         self._predictions.mkdir(parents=True, exist_ok=True)
+        self._keys = set(self.table()["key"])
 
     def has(self, key: str) -> bool:
-        return key in set(self.table()["key"]) if self._log.exists() else False
+        return key in self._keys
 
     def add(
         self, results: list[Result], predictions: dict[str, tuple[np.ndarray, np.ndarray]]
@@ -84,13 +86,14 @@ class ResultStore:
                 proba=proba.astype(np.float16),
             )
         with self._log.open("a") as handle:
-            for result in results:
-                handle.write(json.dumps(asdict(result)) + "\n")
+            handle.write("".join(json.dumps(asdict(result)) + "\n" for result in results))
+        self._keys.update(result.key for result in results)
 
     def table(self) -> pd.DataFrame:
         if not self._log.exists():
             return pd.DataFrame(columns=list(Result.__dataclass_fields__))
-        return pd.read_json(self._log, lines=True, dtype={"tag": str})
+        table = pd.read_json(self._log, lines=True, dtype={"tag": str})
+        return table.assign(tag=table["tag"].fillna(""))
 
     def predictions(self, key: str, test_set: str) -> tuple[np.ndarray, np.ndarray]:
         data = np.load(self._path(key, test_set))

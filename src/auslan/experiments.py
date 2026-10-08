@@ -54,10 +54,16 @@ def e5(settings: Settings, methods: Sequence[str], seeds: Sequence[int]) -> list
         ("m1_skin_knn", {}, "knn"),
         ("m2_hog_svm", {"cell_size": 6}, "cell6"),
         ("m2_hog_svm", {"cell_size": 12}, "cell12"),
+        ("m2_hog_svm", {"kernel": "linear"}, "linear"),
         ("m2_hog_rf", {}, "rf"),
         ("m5_landmarks_rf", {}, "rf"),
         ("m5_landmarks_svm", {"two_hand_distances": False}, "no-contact"),
         ("m5_landmarks_mlp", {"two_hand_distances": False}, "no-contact"),
+        ("m3_cnn", {"augment": False}, "no-augment"),
+        ("m3_cnn", {"channels": (32, 64, 128)}, "3-blocks"),
+        ("m3_cnn", {"channels": (32, 64, 128, 256, 256)}, "5-blocks"),
+        ("m4_mobilenetv2", {"freeze_backbone": True}, "frozen"),
+        ("m4_resnet18", {"freeze_backbone": True}, "frozen"),
     ]
     specs = []
     for method, options, tag in variants:
@@ -81,7 +87,6 @@ EXPERIMENTS: dict[str, Callable[[Settings, Sequence[str], Sequence[int]], list[R
     "E5": e5,
     "E7": e7,
 }
-PRIORITY_ORDER = ("E1", "E3", "E5", "E7")
 
 
 def plan(
@@ -94,7 +99,7 @@ def plan(
     """Runs for one experiment id, or for everything in priority order with ``"all"``."""
     chosen = tuple(methods) if methods else CORE_METHODS
     chosen_seeds = tuple(seeds) if seeds else settings.seeds
-    names = PRIORITY_ORDER if experiment == "all" else (experiment,)
+    names = tuple(EXPERIMENTS) if experiment == "all" else (experiment,)
     unknown = [n for n in names if n not in EXPERIMENTS]
     if unknown:
         raise KeyError(f"unknown experiment {unknown[0]!r}; choose from {', '.join(EXPERIMENTS)}")
