@@ -21,6 +21,9 @@ dependencies = [
     "kaggle",
 ]
 
+[project.scripts]
+auslan = "auslan.cli:main"
+
 [dependency-groups]
 dev = ["pytest", "pytest-cov", "ruff"]
 
