@@ -24,7 +24,7 @@ uv run auslan download --roboflow --roboflow-version 1   # Roboflow, as COCO the
 
 To fetch Kaggle sets by hand instead: `kaggle datasets download -d <slug> -p data/raw/<name> --unzip`
 with the names from the table above (`data/raw/asl_alphabet`, `data/raw/asl_alphabet_test`,
-`data/raw/auslan_kaggle`). `scripts/download_kaggle.sh` does the same for all three.
+`data/raw/auslan_kaggle`).
 
 **Roboflow by hand.** Open the page, pick a version, choose *Download dataset* and the *COCO* format
 (or *Folder structure* if the project offers it), and unzip. If you used COCO, run
@@ -59,4 +59,18 @@ Each stage is cached under `data/work/<name>/` (`hashed.csv`, `crops/`, `chunks/
 
 ### Counts after preparation
 
-COUNTS_PLACEHOLDER
+| Dataset | Raw images (kept letters) | After de-duplication | Train / val / test | Per letter | No hand found |
+|---------|--------------------------|----------------------|--------------------|------------|---------------|
+| `asl_alphabet` | 72,000 | 16,980 | 11,886 / 2,547 / 2,547 | 583 to 865 | 21.5% |
+| `asl_alphabet_test` | 1,440 (every image twice) | 704 | test only | 27 to 30 | 3.7% |
+| `auslan_kaggle` | 51,263 | 11,913 | 8,339 / 1,787 / 1,787 | 356 to 691 (train: 249 to 484) | 100% |
+| `auslan_roboflow` | not downloaded yet | | test only | | |
+
+- The near-duplicate step (perceptual hash within 4 of 64 bits) is strict on purpose: consecutive
+  video frames would otherwise land in both train and test. It is the reason "all data" is about
+  320 images per letter and not the 1,400 mentioned in the Task 1 report. Change
+  `near_duplicate_hamming` to trade size against leakage; the counts above are for the default.
+- MediaPipe finds **no hand in any Kaggle Auslan image**. They are blurred, binarised 500 x 300
+  frames of a whole upper body, and lowering the detection threshold to 0.03 still finds a hand
+  in only 5 of 120 sampled images. These images therefore use the full-frame fallback, and M5
+  (landmarks) is reported under P1 only, the outcome the report's risk register prepares for.
