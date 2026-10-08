@@ -1,0 +1,12 @@
+# Defaults, identical to auslan.config.Settings. Copy this file, change a value and pass it with
+# `auslan --config my.yaml <command>`. Unknown keys are rejected.
+data_dir: data                 # raw/, work/ and models/ live under here
+artifacts_dir: artifacts       # results.jsonl, predictions/, pretrained/, report/
+seeds: [0, 1, 2]               # repeat runs and k-shot draws (report Section 6.4)
+split_seed: 0                  # seed of the 70/15/15 split
+k_values: [5, 10, 20, 50]      # examples per letter; "all" is added by the experiments
+val_per_class: 10              # validation images per letter under P2 and P3
+image_size: 128                # CNN input size; crops are cached at crop_size
+crop_size: 224
+near_duplicate_hamming: 4      # perceptual-hash bits (of 64) below which images count as duplicates
+workers: 4                     # processes for hashing and hand detection
