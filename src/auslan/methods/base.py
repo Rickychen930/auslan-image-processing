@@ -15,6 +15,7 @@ class Classifier(Protocol):
 
     name: str
     supports_transfer: bool  # True if ``init`` can warm-start ``fit`` (P3), False for P3 == P2
+    uses_landmarks: bool  # True if the method is blind without detected hands (M5)
 
     def fit(
         self, train: SampleSet, val: SampleSet | None = None, init: Classifier | None = None
@@ -25,23 +26,30 @@ class Classifier(Protocol):
 
 
 _FACTORIES: dict[str, Callable[..., Classifier]] = {}
+_SEEDED: set[str] = set()  # methods with a random component that accept a ``seed``
 
 
-def register(name: str) -> Callable[[Callable[..., Classifier]], Callable[..., Classifier]]:
-    """Decorator that makes a method constructible by name (open for extension, closed for edit)."""
+def register(
+    name: str, seeded: bool = False
+) -> Callable[[Callable[..., Classifier]], Callable[..., Classifier]]:
+    """Make a method constructible by name; ``seeded`` methods receive the run's seed."""
 
     def decorate(factory: Callable[..., Classifier]) -> Callable[..., Classifier]:
         if name in _FACTORIES:
             raise ValueError(f"method already registered: {name}")
         _FACTORIES[name] = factory
+        if seeded:
+            _SEEDED.add(name)
         return factory
 
     return decorate
 
 
-def create(name: str, **options: object) -> Classifier:
+def create(name: str, seed: int = 0, **options: object) -> Classifier:
     if name not in _FACTORIES:
         raise KeyError(f"unknown method {name!r}; available: {', '.join(method_names())}")
+    if name in _SEEDED:
+        options["seed"] = seed
     return _FACTORIES[name](**options)
 
 
@@ -71,6 +79,7 @@ class FeatureClassifier:
     """Template: hand-crafted features followed by a scikit-learn estimator (no transfer)."""
 
     supports_transfer = False
+    uses_landmarks = False
 
     def __init__(self, name: str) -> None:
         self.name = name

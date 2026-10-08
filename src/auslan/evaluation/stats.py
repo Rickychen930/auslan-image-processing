@@ -40,7 +40,7 @@ def _stratified_resamples(y_true: np.ndarray, n_boot: int, seed: int):
         yield np.concatenate([rng.choice(g, size=len(g), replace=True) for g in groups])
 
 
-def _bootstrap(
+def bootstrap_statistic(
     y_true: np.ndarray,
     statistic: Callable[[np.ndarray], float],
     n_boot: int,
@@ -61,7 +61,7 @@ def bootstrap_ci(
     alpha: float = 0.05,
 ) -> tuple[float, float]:
     """Percentile CI of macro-F1, resampled within each letter."""
-    return _bootstrap(
+    return bootstrap_statistic(
         y_true, lambda i: macro_f1(y_true[i], y_pred[i], n_classes), n_boot, seed, alpha
     )
 
@@ -80,4 +80,4 @@ def paired_bootstrap_diff(
     def diff(i: np.ndarray) -> float:
         return macro_f1(y_true[i], pred_a[i], n_classes) - macro_f1(y_true[i], pred_b[i], n_classes)
 
-    return _bootstrap(y_true, diff, n_boot, seed, alpha)
+    return bootstrap_statistic(y_true, diff, n_boot, seed, alpha)

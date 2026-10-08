@@ -37,11 +37,11 @@ class ResNet18Classifier(ImageClassifier):
         return net
 
 
-@register("m4_mobilenetv2")
+@register("m4_mobilenetv2", seeded=True)
 def _mobilenet(**options: object) -> MobileNetV2Classifier:
     return MobileNetV2Classifier("m4_mobilenetv2", **options)
 
 
-@register("m4_resnet18")
+@register("m4_resnet18", seeded=True)
 def _resnet(**options: object) -> ResNet18Classifier:
     return ResNet18Classifier("m4_resnet18", **options)

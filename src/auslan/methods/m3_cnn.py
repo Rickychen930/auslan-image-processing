@@ -43,6 +43,6 @@ class CnnClassifier(ImageClassifier):
         return SmallCnn(n_classes)
 
 
-@register("m3_cnn")
+@register("m3_cnn", seeded=True)
 def _cnn(**options: object) -> CnnClassifier:
     return CnnClassifier("m3_cnn", **options)

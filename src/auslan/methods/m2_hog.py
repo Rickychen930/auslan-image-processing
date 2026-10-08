@@ -18,10 +18,11 @@ PCA_COMPONENTS = 128
 
 
 class HogClassifier(FeatureClassifier):
-    def __init__(self, name: str, estimator: str, cell_size: int = 8) -> None:
+    def __init__(self, name: str, estimator: str, cell_size: int = 8, seed: int = 0) -> None:
         super().__init__(name)
         self._estimator_kind = estimator
         self._cell_size = cell_size
+        self._seed = seed
 
     def _features(self, samples: SampleSet) -> np.ndarray:
         return np.stack([self._describe(samples[i].crop) for i in range(len(samples))])
@@ -41,9 +42,9 @@ class HogClassifier(FeatureClassifier):
         model = (
             SVC(kernel="rbf", C=10.0, gamma="scale")
             if self._estimator_kind == "svm"
-            else RandomForestClassifier(n_estimators=300, n_jobs=-1, random_state=0)
+            else RandomForestClassifier(n_estimators=300, n_jobs=-1, random_state=self._seed)
         )
-        return make_pipeline(PCA(n_components=components, random_state=0), model)
+        return make_pipeline(PCA(n_components=components, random_state=self._seed), model)
 
 
 @register("m2_hog_svm")
@@ -51,6 +52,6 @@ def _hog_svm(cell_size: int = 8) -> HogClassifier:
     return HogClassifier("m2_hog_svm", "svm", cell_size)
 
 
-@register("m2_hog_rf")
-def _hog_rf(cell_size: int = 8) -> HogClassifier:
-    return HogClassifier("m2_hog_rf", "rf", cell_size)
+@register("m2_hog_rf", seeded=True)
+def _hog_rf(cell_size: int = 8, seed: int = 0) -> HogClassifier:
+    return HogClassifier("m2_hog_rf", "rf", cell_size, seed)

@@ -78,10 +78,15 @@ def landmark_features(landmarks: np.ndarray, two_hand_distances: bool = True) ->
 
 
 class LandmarkClassifier(FeatureClassifier):
-    def __init__(self, name: str, estimator: str, two_hand_distances: bool = True) -> None:
+    uses_landmarks = True
+
+    def __init__(
+        self, name: str, estimator: str, two_hand_distances: bool = True, seed: int = 0
+    ) -> None:
         super().__init__(name)
         self._estimator_kind = estimator
         self._two_hand = two_hand_distances
+        self._seed = seed
 
     def _features(self, samples: SampleSet) -> np.ndarray:
         return landmark_features(samples.landmark_array(), self._two_hand)
@@ -89,7 +94,7 @@ class LandmarkClassifier(FeatureClassifier):
     def _make_estimator(self, features: np.ndarray):
         if self._estimator_kind == "svm":
             return make_pipeline(StandardScaler(), SVC(kernel="rbf", C=10.0, gamma="scale"))
-        return RandomForestClassifier(n_estimators=300, n_jobs=-1, random_state=0)
+        return RandomForestClassifier(n_estimators=300, n_jobs=-1, random_state=self._seed)
 
 
 class _Mlp(nn.Module):
@@ -108,6 +113,7 @@ class LandmarkMlp(TorchClassifier):
     """MLP on landmark features; it can start from ASL weights (the second hand is all zeros)."""
 
     head_prefixes = ("head",)
+    uses_landmarks = True
 
     def __init__(self, name: str, two_hand_distances: bool = True, **options: object) -> None:
         super().__init__(name, **options)
@@ -136,11 +142,11 @@ def _landmarks_svm(two_hand_distances: bool = True) -> LandmarkClassifier:
     return LandmarkClassifier("m5_landmarks_svm", "svm", two_hand_distances)
 
 
-@register("m5_landmarks_rf")
-def _landmarks_rf(two_hand_distances: bool = True) -> LandmarkClassifier:
-    return LandmarkClassifier("m5_landmarks_rf", "rf", two_hand_distances)
+@register("m5_landmarks_rf", seeded=True)
+def _landmarks_rf(two_hand_distances: bool = True, seed: int = 0) -> LandmarkClassifier:
+    return LandmarkClassifier("m5_landmarks_rf", "rf", two_hand_distances, seed)
 
 
-@register("m5_landmarks_mlp")
+@register("m5_landmarks_mlp", seeded=True)
 def _landmarks_mlp(**options: object) -> LandmarkMlp:
     return LandmarkMlp("m5_landmarks_mlp", **options)

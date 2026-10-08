@@ -40,6 +40,7 @@ class TorchClassifier:
     """Mini-batch trainer with a step budget, cosine LR, early stopping and head-less transfer."""
 
     supports_transfer = True
+    uses_landmarks = False
     head_prefixes: tuple[str, ...] = ("head",)  # parameters that are re-initialised for new classes
 
     def __init__(
