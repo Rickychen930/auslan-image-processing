@@ -12,7 +12,7 @@ from torch import nn
 from torch.utils.data import Dataset, TensorDataset
 
 from auslan.data.sample_set import SampleSet
-from auslan.methods.base import Classifier, FeatureClassifier, register
+from auslan.methods.base import SVM_C_GRID, FeatureClassifier, register
 from auslan.methods.torch_base import TorchClassifier
 
 WRIST, MIDDLE_MCP = 0, 9
@@ -23,7 +23,13 @@ JOINT_TRIPLES = tuple(
     for base in (1, 5, 9, 13, 17)
     for a, b, c in ((0, base, base + 1), (base, base + 1, base + 2), (base + 1, base + 2, base + 3))
 )
+HAND_FEATURES = 21 * 3 + len(JOINT_TRIPLES)
+CONTACT_FEATURES = len(FINGERTIPS) ** 2 + 3  # tip-to-tip gaps, wrist offset (x, y) and distance
 EPS = 1e-6
+
+
+def feature_count(two_hand_distances: bool = True) -> int:
+    return 2 * HAND_FEATURES + 2 + (CONTACT_FEATURES if two_hand_distances else 0)
 
 
 def _hand_block(hand: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -48,7 +54,7 @@ def _hand_block(hand: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return block * present[:, None], size, present
 
 
-def _contact_features(hands: np.ndarray, sizes: np.ndarray, both: np.ndarray) -> np.ndarray:
+def _contact_features(hands: np.ndarray, sizes: np.ndarray, both_hands: np.ndarray) -> np.ndarray:
     """Fingertip-to-fingertip distances and wrist offset between the two hands.
 
     These describe where the hands touch, which is what separates many Auslan letters.
@@ -62,18 +68,19 @@ def _contact_features(hands: np.ndarray, sizes: np.ndarray, both: np.ndarray) ->
     features = np.concatenate(
         [gaps, wrist_offset, np.linalg.norm(wrist_offset, axis=1, keepdims=True)], axis=1
     )
-    return features / scale[:, None] * both[:, None]
+    return features / scale[:, None] * both_hands[:, None]
 
 
 def landmark_features(landmarks: np.ndarray, two_hand_distances: bool = True) -> np.ndarray:
     """Feature matrix for landmarks of shape ``(n, 2, 21, 3)``; absent hands give zeros."""
-    blocks, sizes, present = zip(
-        *(_hand_block(landmarks[:, hand]) for hand in range(landmarks.shape[1])), strict=True
-    )
-    parts = [*blocks, np.stack(present, axis=1).astype(np.float64)]
+    first, second = (_hand_block(landmarks[:, hand]) for hand in (0, 1))
+    present = np.stack([first[2], second[2]], axis=1).astype(np.float32)
+    parts = [first[0], second[0], present]
     if two_hand_distances:
-        both = np.logical_and(*present)
-        parts.append(_contact_features(landmarks, np.stack(sizes, axis=1), both))
+        both_hands = first[2] & second[2]
+        parts.append(
+            _contact_features(landmarks, np.stack([first[1], second[1]], axis=1), both_hands)
+        )
     return np.concatenate(parts, axis=1).astype(np.float32)
 
 
@@ -91,10 +98,13 @@ class LandmarkClassifier(FeatureClassifier):
     def _features(self, samples: SampleSet) -> np.ndarray:
         return landmark_features(samples.landmark_array(), self._two_hand)
 
-    def _make_estimator(self, features: np.ndarray):
+    def _candidates(self, features: np.ndarray) -> list:
         if self._estimator_kind == "svm":
-            return make_pipeline(StandardScaler(), SVC(kernel="rbf", C=10.0, gamma="scale"))
-        return RandomForestClassifier(n_estimators=300, n_jobs=-1, random_state=self._seed)
+            return [
+                make_pipeline(StandardScaler(), SVC(kernel="rbf", C=c, gamma="scale"))
+                for c in SVM_C_GRID
+            ]
+        return [RandomForestClassifier(300, n_jobs=-1, random_state=self._seed)]
 
 
 class _Mlp(nn.Module):
@@ -110,7 +120,11 @@ class _Mlp(nn.Module):
 
 
 class LandmarkMlp(TorchClassifier):
-    """MLP on landmark features; it can start from ASL weights (the second hand is all zeros)."""
+    """MLP on landmark features; it can start from ASL weights (the second hand is all zeros).
+
+    The features are already scaled by hand size, so no learned scaler is applied. P2 and P3 then
+    differ only in the initial weights.
+    """
 
     head_prefixes = ("head",)
     uses_landmarks = True
@@ -118,23 +132,13 @@ class LandmarkMlp(TorchClassifier):
     def __init__(self, name: str, two_hand_distances: bool = True, **options: object) -> None:
         super().__init__(name, **options)
         self._two_hand = two_hand_distances
-        self._scaler = StandardScaler()
 
     def _build(self, n_classes: int) -> nn.Module:
-        return _Mlp(self._n_features, n_classes)
-
-    def _before_fit(self, train: SampleSet, init: Classifier | None) -> None:
-        features = landmark_features(train.landmark_array(), self._two_hand)
-        self._n_features = features.shape[1]
-        if isinstance(init, LandmarkMlp):
-            self._scaler = init._scaler  # pretrained weights expect the ASL feature scaling
-        else:
-            self._scaler.fit(features)
+        return _Mlp(feature_count(self._two_hand), n_classes)
 
     def _dataset(self, samples: SampleSet, train: bool) -> Dataset:
         features = landmark_features(samples.landmark_array(), self._two_hand)
-        scaled = torch.from_numpy(self._scaler.transform(features).astype(np.float32))
-        return TensorDataset(scaled, torch.from_numpy(samples.labels))
+        return TensorDataset(torch.from_numpy(features), torch.from_numpy(samples.labels))
 
 
 @register("m5_landmarks_svm")

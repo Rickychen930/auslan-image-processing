@@ -11,17 +11,20 @@ from sklearn.pipeline import make_pipeline
 from sklearn.svm import SVC
 
 from auslan.data.sample_set import SampleSet
-from auslan.methods.base import FeatureClassifier, register
+from auslan.methods.base import SVM_C_GRID, FeatureClassifier, register
 
 ORIENTATIONS = 9
 PCA_COMPONENTS = 128
 
 
 class HogClassifier(FeatureClassifier):
-    def __init__(self, name: str, estimator: str, cell_size: int = 8, seed: int = 0) -> None:
+    def __init__(
+        self, name: str, estimator: str, cell_size: int = 8, kernel: str = "rbf", seed: int = 0
+    ) -> None:
         super().__init__(name)
         self._estimator_kind = estimator
         self._cell_size = cell_size
+        self._kernel = kernel
         self._seed = seed
 
     def _features(self, samples: SampleSet) -> np.ndarray:
@@ -37,21 +40,23 @@ class HogClassifier(FeatureClassifier):
             block_norm="L2-Hys",
         ).astype(np.float32)
 
-    def _make_estimator(self, features: np.ndarray):
+    def _candidates(self, features: np.ndarray) -> list:
         components = min(PCA_COMPONENTS, features.shape[0] - 1, features.shape[1])
-        model = (
-            SVC(kernel="rbf", C=10.0, gamma="scale")
-            if self._estimator_kind == "svm"
-            else RandomForestClassifier(n_estimators=300, n_jobs=-1, random_state=self._seed)
-        )
-        return make_pipeline(PCA(n_components=components, random_state=self._seed), model)
+        if self._estimator_kind == "svm":
+            models = [SVC(kernel=self._kernel, C=c, gamma="scale") for c in SVM_C_GRID]
+        else:
+            models = [RandomForestClassifier(300, n_jobs=-1, random_state=self._seed)]
+        return [
+            make_pipeline(PCA(n_components=components, random_state=self._seed), model)
+            for model in models
+        ]
 
 
 @register("m2_hog_svm")
-def _hog_svm(cell_size: int = 8) -> HogClassifier:
-    return HogClassifier("m2_hog_svm", "svm", cell_size)
+def _hog_svm(cell_size: int = 8, kernel: str = "rbf") -> HogClassifier:
+    return HogClassifier("m2_hog_svm", "svm", cell_size, kernel)
 
 
 @register("m2_hog_rf", seeded=True)
 def _hog_rf(cell_size: int = 8, seed: int = 0) -> HogClassifier:
-    return HogClassifier("m2_hog_rf", "rf", cell_size, seed)
+    return HogClassifier("m2_hog_rf", "rf", cell_size, seed=seed)

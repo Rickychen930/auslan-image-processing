@@ -29,8 +29,13 @@ def test_macro_f1_counts_each_class_equally():
     assert macro_f1(y_true, y_pred, 2) == pytest.approx((2 * 0.9 / 1.9) / 2)
 
 
-def test_macro_f1_handles_class_never_predicted():
-    assert macro_f1(np.array([0, 1]), np.array([0, 0]), 3) >= 0.0
+def test_macro_f1_ignores_letters_that_never_occur():
+    y = np.array([0, 1, 2])
+    assert macro_f1(y, y, 26) == pytest.approx(1.0)  # 23 absent letters are not phantom zeros
+
+
+def test_macro_f1_still_penalises_a_letter_that_is_predicted_but_absent():
+    assert macro_f1(np.array([0, 0]), np.array([0, 1]), 3) == pytest.approx((2 / 3 + 0) / 2)
 
 
 def test_top_k_accuracy():
@@ -38,6 +43,11 @@ def test_top_k_accuracy():
     y = np.array([2, 1])
     assert top_k_accuracy(proba, y, 1) == pytest.approx(0.0)
     assert top_k_accuracy(proba, y, 2) == pytest.approx(1.0)
+
+
+def test_top_k_ties_go_to_the_lower_class_index():
+    flat = np.zeros((2, 5))
+    assert top_k_accuracy(flat, np.array([1, 4]), 3) == pytest.approx(0.5)
 
 
 def test_confusion_matrix_and_pairs():

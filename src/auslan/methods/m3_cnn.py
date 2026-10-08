@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from itertools import pairwise
+
 from torch import nn
 
 from auslan.methods.base import register
@@ -21,15 +23,12 @@ def _block(in_channels: int, out_channels: int) -> nn.Sequential:
 
 
 class SmallCnn(nn.Module):
-    def __init__(self, n_classes: int) -> None:
+    def __init__(self, n_classes: int, channels: tuple[int, ...] = CHANNELS) -> None:
         super().__init__()
-        widths = (3, *CHANNELS)
-        self.features = nn.Sequential(
-            *(_block(a, b) for a, b in zip(widths, widths[1:], strict=False))
-        )
+        self.features = nn.Sequential(*(_block(a, b) for a, b in pairwise((3, *channels))))
         self.pool = nn.AdaptiveAvgPool2d(1)
         self.head = nn.Sequential(
-            nn.Flatten(), nn.Dropout(DROPOUT), nn.Linear(CHANNELS[-1], n_classes)
+            nn.Flatten(), nn.Dropout(DROPOUT), nn.Linear(channels[-1], n_classes)
         )
 
     def forward(self, x):
@@ -39,8 +38,12 @@ class SmallCnn(nn.Module):
 class CnnClassifier(ImageClassifier):
     head_prefixes = ("head",)
 
+    def __init__(self, name: str, channels: tuple[int, ...] = CHANNELS, **options: object) -> None:
+        super().__init__(name, **options)
+        self._channels = tuple(channels)
+
     def _build(self, n_classes: int) -> nn.Module:
-        return SmallCnn(n_classes)
+        return SmallCnn(n_classes, self._channels)
 
 
 @register("m3_cnn", seeded=True)

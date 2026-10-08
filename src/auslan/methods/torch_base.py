@@ -1,14 +1,15 @@
 """Shared PyTorch training loop for M3, M4 and the M5 MLP.
 
-Subclasses only say how to build the network, which parameters form the classification head
-and how to turn samples into batches; training, early stopping and ASL -> Auslan weight
-transfer (protocol P3) live here once.
+Subclasses say how to build the network, which parameters form the classification head and how
+to turn samples into batches. Training, early stopping and ASL -> Auslan weight transfer
+(protocol P3) live here once.
 """
 
 from __future__ import annotations
 
 import copy
 import logging
+import random
 from typing import Self
 
 import numpy as np
@@ -30,6 +31,7 @@ IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
 MIN_EVAL_EVERY = 25  # validate at least this many steps apart, so early stopping is not twitchy
 MAX_EVAL_EVERY = 250
+WHITE, BLACK = 255, 0
 
 
 def default_device() -> str:
@@ -41,6 +43,7 @@ class TorchClassifier:
 
     supports_transfer = True
     uses_landmarks = False
+    needs_colour = False
     head_prefixes: tuple[str, ...] = ("head",)  # parameters that are re-initialised for new classes
 
     def __init__(
@@ -65,23 +68,21 @@ class TorchClassifier:
         self._device = device or default_device()
         self._model: nn.Module | None = None
 
-    # -- hooks -----------------------------------------------------------------------------
     def _build(self, n_classes: int) -> nn.Module:
         raise NotImplementedError
 
     def _dataset(self, samples: SampleSet, train: bool) -> Dataset:
         raise NotImplementedError
 
-    def _before_fit(self, train: SampleSet, init: Classifier | None) -> None:
-        """Optional hook, e.g. to fit or inherit feature scalers."""
-
-    # -- public API ------------------------------------------------------------------------
     def fit(
         self, train: SampleSet, val: SampleSet | None = None, init: Classifier | None = None
     ) -> Self:
+        random.seed(self._seed)
+        np.random.seed(self._seed)  # noqa: NPY002 - augmentation libraries read the global state
         torch.manual_seed(self._seed)
+        if len(train) == 0:
+            raise ValueError(f"{self.name}: the training set is empty")
         n_classes = len(train.label_space)
-        self._before_fit(train, init)
         loader = self._loader(train, shuffle=True)
         val_loader = self._loader(val, shuffle=False) if val is not None else None
         model = self._build(n_classes)
@@ -103,7 +104,6 @@ class TorchClassifier:
         if self._model is not None:
             self._model.to(device)
 
-    # -- internals -------------------------------------------------------------------------
     def _loader(self, samples: SampleSet, shuffle: bool) -> DataLoader:
         dataset = self._dataset(samples, train=shuffle)
         return DataLoader(
@@ -115,15 +115,15 @@ class TorchClassifier:
         )
 
     def _transfer(self, model: nn.Module, init: Classifier) -> None:
+        """Copy every weight except the classification head from a model trained on ASL."""
         if not isinstance(init, type(self)) or init._model is None:
-            raise TypeError(
-                f"{self.name} can only be initialised from a fitted {type(self).__name__}"
+            raise TypeError(f"{self.name} can only start from a fitted {type(self).__name__}")
+        state = init._model.state_dict()
+        weights = {k: v for k, v in state.items() if not k.startswith(self.head_prefixes)}
+        if len(weights) == len(state):
+            raise RuntimeError(
+                f"head_prefixes {self.head_prefixes} match no parameter of {self.name}"
             )
-        weights = {
-            key: value
-            for key, value in init._model.state_dict().items()
-            if not key.startswith(self.head_prefixes)
-        }
         _, unexpected = model.load_state_dict(weights, strict=False)
         if unexpected:
             raise RuntimeError(f"unexpected keys while transferring weights: {unexpected}")
@@ -138,7 +138,8 @@ class TorchClassifier:
     ) -> nn.Module:
         # Tiny few-shot sets get at least min_steps; huge sets are cut off at max_steps.
         budget = min(self._max_steps, max(self._max_epochs * len(loader), self._min_steps))
-        optimiser = AdamW(model.parameters(), lr=self._lr, weight_decay=self._weight_decay)
+        trainable = [p for p in model.parameters() if p.requires_grad]
+        optimiser = AdamW(trainable, lr=self._lr, weight_decay=self._weight_decay)
         scheduler = CosineAnnealingLR(optimiser, T_max=budget)
         eval_every = min(max(len(loader), MIN_EVAL_EVERY), MAX_EVAL_EVERY)
         best_score, best_state, stale, step = -1.0, None, 0, 0
@@ -159,7 +160,13 @@ class TorchClassifier:
                         stale += 1
                 if step >= budget or stale >= self._patience:
                     break
-        log.info("%s: %d steps, best val macro-F1 %.3f", self.name, step, best_score)
+        log.info(
+            "%s: %d steps (%.1f epochs), best val macro-F1 %.3f",
+            self.name,
+            step,
+            step / len(loader),
+            best_score,
+        )
         if best_state is not None:
             model.load_state_dict(best_state)
         return model
@@ -189,15 +196,22 @@ class _ImageDataset(Dataset):
 
 
 class ImageClassifier(TorchClassifier):
-    """Image models: augmentation without flips (a flip would swap the two hands)."""
+    """Image models. Augmentation never flips: a flip would swap the two hands."""
+
+    def __init__(self, name: str, *, augment: bool = True, **options: object) -> None:
+        super().__init__(name, **options)
+        self._augment = augment
 
     def _dataset(self, samples: SampleSet, train: bool) -> Dataset:
-        size = samples.image_size
         steps: list = [v2.ToImage()]
-        if train:
+        if train and self._augment:
+            # Rotation exposes corners: fill them with the page colour, not with ink.
+            fill = WHITE if samples.mostly_binarised else BLACK
             steps += [
-                v2.RandomResizedCrop(size, scale=(0.8, 1.0), ratio=(0.9, 1.1), antialias=True),
-                v2.RandomRotation(10),
+                v2.RandomResizedCrop(
+                    samples.image_size, scale=(0.8, 1.0), ratio=(0.9, 1.1), antialias=True
+                ),
+                v2.RandomRotation(10, fill=fill),
                 v2.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.02),
             ]
         steps += [v2.ToDtype(torch.float32, scale=True), v2.Normalize(IMAGENET_MEAN, IMAGENET_STD)]
