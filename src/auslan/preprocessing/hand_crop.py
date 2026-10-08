@@ -1,7 +1,6 @@
 """Shared pre-processing: crop each image to the union of the detected hand boxes.
 
-The detector is injected (``HandDetector``), so the crop logic is testable without MediaPipe and
-the detection backend can change without touching callers (Dependency Inversion).
+Detectors are passed in, so the crop logic can be tested without MediaPipe.
 """
 
 from __future__ import annotations
@@ -86,6 +85,12 @@ def skin_colour_mask(rgb: np.ndarray) -> np.ndarray:
     return cv2.bitwise_and(hsv, ycrcb)
 
 
+def clean_mask(mask: np.ndarray) -> np.ndarray:
+    """Remove specks, then close small holes (3 x 3 morphological opening and closing)."""
+    kernel = np.ones((3, 3), np.uint8)
+    return cv2.morphologyEx(cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel), cv2.MORPH_CLOSE, kernel)
+
+
 class SkinRegions:
     """Fallback for colour images: the two largest skin-coloured blobs, with faces masked out."""
 
@@ -95,11 +100,7 @@ class SkinRegions:
         self._faces = faces
 
     def box(self, rgb: np.ndarray) -> Box | None:
-        mask = self._skin_mask(rgb)
-        kernel = np.ones((3, 3), np.uint8)
-        mask = cv2.morphologyEx(
-            cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel), cv2.MORPH_CLOSE, kernel
-        )
+        mask = clean_mask(self._skin_mask(rgb))
         _, _, stats, _ = cv2.connectedComponentsWithStats(mask)
         min_area = self.MIN_AREA_FRACTION * mask.size
         blobs = [s for s in stats[1:] if s[cv2.CC_STAT_AREA] >= min_area]
@@ -130,8 +131,6 @@ class HandCropper:
         padding: float = DEFAULT_PADDING,
         size: int = 224,
     ) -> None:
-        if size <= 0:
-            raise ValueError("size must be positive")
         self._detector = detector
         self._fallback = fallback
         self._padding = padding
@@ -142,8 +141,11 @@ class HandCropper:
         detected = self._detector.detect(rgb).hands[:MAX_HANDS]
         hands = sorted(detected, key=lambda h: float(h[0, 0]))  # wrist x, not handedness label
         landmarks = np.zeros((MAX_HANDS, LANDMARKS_PER_HAND, 3), np.float32)
+        # MediaPipe gives x and z as fractions of the width and y of the height. Rescale x and z
+        # to the height so distances and angles are not skewed on non-square photos.
+        units = np.array([width / height, 1.0, width / height], np.float32)
         for slot, hand in enumerate(hands):
-            landmarks[slot] = hand
+            landmarks[slot] = hand * units
         if hands:
             box = union_box(hands, self._padding, height, width)
             return CropResult(self._square_crop(rgb, box), landmarks, len(hands), False)

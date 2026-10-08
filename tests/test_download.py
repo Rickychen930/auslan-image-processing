@@ -56,3 +56,15 @@ def test_unsafe_archive_paths_are_rejected(tmp_path):
         bundle.writestr("../escape.txt", "no")
     with pytest.raises(RuntimeError, match="unsafe"):
         download._safe_extract(archive, tmp_path / "target")
+
+
+def test_interrupted_download_leaves_no_file_behind(tmp_path, monkeypatch):
+    def broken_transfer(url, destination):
+        destination.write_bytes(b"half")
+        raise OSError("connection lost")
+
+    monkeypatch.setattr(download.urllib.request, "urlretrieve", broken_transfer)
+    target = tmp_path / "model.task"
+    with pytest.raises(OSError, match="connection lost"):
+        download._fetch("https://example.invalid/model.task", target)
+    assert not target.exists()

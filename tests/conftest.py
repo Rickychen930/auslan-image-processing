@@ -45,7 +45,7 @@ def _write_prepared(work_dir, name, per_split, seed, letters=("A", "B", "C")):
             for _ in range(per_class):
                 path = folder / "crops" / f"{len(rows):05d}.png"
                 cv2.imwrite(str(path), cv2.cvtColor(_draw(class_id, rng), cv2.COLOR_RGB2BGR))
-                rows.append((str(path), letter, name, split, str(path), 1, False, len(rows)))
+                rows.append((str(path), letter, name, split, str(path), 1, False, False, len(rows)))
                 landmarks.append(_landmarks(class_id, rng))
     columns = [
         "path",
@@ -55,6 +55,7 @@ def _write_prepared(work_dir, name, per_split, seed, letters=("A", "B", "C")):
         "crop_path",
         "n_hands",
         "used_fallback",
+        "binarised",
         "lm_index",
     ]
     pd.DataFrame(rows, columns=columns).to_csv(folder / "catalog.csv", index=False)

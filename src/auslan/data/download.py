@@ -15,8 +15,8 @@ import zipfile
 from pathlib import Path
 from urllib.parse import urlencode
 
+from auslan.config import FACE_MODEL, HAND_MODEL
 from auslan.data.classes import letter_from_name
-from auslan.preprocessing.factory import FACE_MODEL, HAND_MODEL
 
 log = logging.getLogger(__name__)
 
@@ -47,7 +47,12 @@ def download_kaggle(raw_dir: Path, names: list[str] | None = None) -> None:
             log.info("%s already downloaded", name)
             continue
         log.info("downloading %s (%s)", name, KAGGLE_DATASETS[name])
-        api.dataset_download_files(KAGGLE_DATASETS[name], path=str(target), unzip=True, quiet=False)
+        partial = target.with_name(f"{name}.downloading")  # renamed only once complete
+        shutil.rmtree(partial, ignore_errors=True)
+        api.dataset_download_files(
+            KAGGLE_DATASETS[name], path=str(partial), unzip=True, quiet=False
+        )
+        partial.rename(target)
 
 
 def download_models(models_dir: Path) -> None:
@@ -58,7 +63,7 @@ def download_models(models_dir: Path) -> None:
         target = models_dir / filename
         if not target.exists():
             log.info("downloading %s", filename)
-            urllib.request.urlretrieve(url, target)  # noqa: S310 - fixed https URLs above
+            _fetch(url, target)
 
 
 def download_roboflow(raw_dir: Path, version: int = 1) -> int:
@@ -72,10 +77,17 @@ def download_roboflow(raw_dir: Path, version: int = 1) -> int:
     link = _roboflow_export_link(api_key, version)
     with tempfile.TemporaryDirectory() as scratch:
         archive = Path(scratch) / "export.zip"
-        urllib.request.urlretrieve(link, archive)  # noqa: S310 - link comes from the Roboflow API
+        _fetch(link, archive)
         extracted = Path(scratch) / "coco"
         _safe_extract(archive, extracted)
         return organise_coco_by_class(extracted, Path(raw_dir) / "auslan_roboflow")
+
+
+def _fetch(url: str, target: Path) -> None:
+    """Download to a temporary name so an interrupted transfer never leaves a corrupt file."""
+    partial = target.with_name(target.name + ".part")
+    urllib.request.urlretrieve(url, partial)  # noqa: S310 - https URLs from this module or Roboflow
+    partial.replace(target)
 
 
 def _roboflow_export_link(api_key: str, version: int) -> str:

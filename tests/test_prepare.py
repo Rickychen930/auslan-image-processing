@@ -97,6 +97,21 @@ def test_reference_overlap_is_removed(spec, tmp_path):
     assert [Path(p).name for p in kept["path"]] == ["fresh.png"]
 
 
+def test_rebuilding_with_different_settings_is_refused(spec, tmp_path):
+    _prepare(spec, tmp_path)
+    with pytest.raises(RuntimeError, match="delete"):
+        prepare_source(
+            spec, tmp_path / "work", fake_cropper, seed=0, max_hamming=2, workers=1, chunk_size=10
+        )
+
+
+def test_drawings_are_flagged_in_the_catalog(tmp_path):
+    root = tmp_path / "raw"
+    _make_dataset(root, per_class=4)
+    spec = DatasetSpec("drawings", root, ("A", "B"), "full", split=False)
+    assert pd.read_csv(_prepare(spec, tmp_path) / "catalog.csv")["binarised"].all()
+
+
 def test_load_prepared_returns_aligned_frame_and_landmarks(spec, tmp_path):
     out = _prepare(spec, tmp_path)
     frame, landmarks = load_prepared(out)

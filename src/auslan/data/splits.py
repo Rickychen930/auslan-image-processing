@@ -40,8 +40,3 @@ def sample_k_shot(df: pd.DataFrame, k: int | None, seed: int) -> pd.DataFrame:
         take = len(group) if k is None else min(k, len(group))
         parts.append(group.iloc[rng.permutation(len(group))[:take]])
     return pd.concat(parts).reset_index(drop=True)
-
-
-def validation_subset(df: pd.DataFrame, per_class: int, seed: int) -> pd.DataFrame:
-    """Fixed-size validation set so tuning data stays comparable to the k training images."""
-    return sample_k_shot(df, per_class, seed)

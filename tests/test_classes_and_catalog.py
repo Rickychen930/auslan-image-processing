@@ -31,7 +31,6 @@ def test_label_space_round_trip():
     space = LabelSpace(("A", "B", "C"))
     assert len(space) == 3
     assert space.index("B") == 1
-    assert space.letter(2) == "C"
     with pytest.raises(KeyError):
         space.index("Z")
 

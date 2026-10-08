@@ -37,10 +37,17 @@ def test_bulk_landmarks_follow_frame_order(prepared):
     assert np.array_equal(ds.landmark_array(), landmarks[[2, 0]])
 
 
-def test_transform_is_applied_to_crops(prepared):
+def test_styled_sets_are_drawings(prepared):
     frame, landmarks = prepared
-    ds = SampleSet(frame, landmarks, SPACE, image_size=32, transform=lambda a: np.zeros_like(a))
-    assert not ds[0].crop.any()
+    styled = SampleSet(frame, landmarks, SPACE, image_size=32, styled=True)[0]
+    assert styled.binarised and set(np.unique(styled.crop)) <= {0, 255}
+    assert not SampleSet(frame, landmarks, SPACE, image_size=32)[0].binarised
+
+
+def test_catalog_flag_marks_native_drawings(prepared):
+    frame, landmarks = prepared
+    ds = SampleSet(frame.assign(binarised=True), landmarks, SPACE, image_size=32)
+    assert ds[0].binarised and ds.mostly_binarised
 
 
 def test_subset_preserves_alignment(prepared):

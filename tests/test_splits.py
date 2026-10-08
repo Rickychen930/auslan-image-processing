@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from auslan.data.splits import sample_k_shot, stratified_split, validation_subset
+from auslan.data.splits import sample_k_shot, stratified_split
 
 
 def _frame(per_class: int = 100, letters: str = "ABC") -> pd.DataFrame:
@@ -42,8 +42,3 @@ def test_k_shot_none_returns_everything_and_large_k_is_capped():
     train = _frame(per_class=10)
     assert len(sample_k_shot(train, k=None, seed=0)) == 30
     assert len(sample_k_shot(train, k=50, seed=0)) == 30
-
-
-def test_validation_subset_is_fixed_size_per_class():
-    out = validation_subset(_frame(), per_class=10, seed=0)
-    assert out["label"].value_counts().tolist() == [10, 10, 10]

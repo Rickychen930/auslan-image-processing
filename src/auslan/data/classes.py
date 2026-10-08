@@ -33,9 +33,6 @@ class LabelSpace:
         except ValueError:
             raise KeyError(letter) from None
 
-    def letter(self, index: int) -> str:
-        return self.letters[index]
-
 
 ASL_SPACE = LabelSpace(ASL_LETTERS)
 AUSLAN_SPACE = LabelSpace(AUSLAN_LETTERS)

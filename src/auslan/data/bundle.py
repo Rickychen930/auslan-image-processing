@@ -10,7 +10,6 @@ import pandas as pd
 from auslan.data.classes import ASL_SPACE, AUSLAN_SPACE, LabelSpace
 from auslan.data.prepare import load_prepared
 from auslan.data.sample_set import SampleSet
-from auslan.data.transforms import kaggle_style
 
 
 class DataBundle:
@@ -51,9 +50,7 @@ class DataBundle:
         frame, landmarks = self._catalog(name)
         if split is not None:
             frame = frame[frame["split"] == split]
-        return SampleSet(
-            frame, landmarks, space, self._image_size, kaggle_style if styled else None
-        )
+        return SampleSet(frame, landmarks, space, self._image_size, styled=styled)
 
     def _catalog(self, name: str) -> tuple[pd.DataFrame, np.ndarray]:
         if name not in self._loaded:

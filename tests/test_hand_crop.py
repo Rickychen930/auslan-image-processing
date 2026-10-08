@@ -86,6 +86,9 @@ def test_skin_fallback_masks_out_detected_faces():
     assert SkinRegions(FaceOnPatch()).box(rgb) is None
 
 
-def test_cropper_rejects_non_positive_size():
-    with pytest.raises(ValueError):
-        HandCropper(FakeDetector([]), FullFrame(), size=0)
+def test_landmarks_are_rescaled_to_image_height_on_wide_photos():
+    wide = np.zeros((50, 100, 3), np.uint8)  # twice as wide as it is high
+    result = HandCropper(FakeDetector([_hand(0.5, 0.5, 0.1)]), FullFrame(), size=16)(wide)
+    span_x = np.ptp(result.landmarks[0, :, 0])
+    span_y = np.ptp(result.landmarks[0, :, 1])
+    assert span_x == pytest.approx(2 * span_y)  # same normalised spread, twice the pixel spread

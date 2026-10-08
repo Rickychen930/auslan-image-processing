@@ -4,11 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from auslan.config import FACE_MODEL, HAND_MODEL
 from auslan.preprocessing.hand_crop import FullFrame, HandCropper, SkinRegions
 from auslan.preprocessing.mediapipe_detector import MediaPipeFaceDetector, MediaPipeHandDetector
-
-HAND_MODEL = "hand_landmarker.task"
-FACE_MODEL = "blaze_face_short_range.tflite"
 
 
 def build_cropper(models_dir: Path, fallback: str, crop_size: int) -> HandCropper:

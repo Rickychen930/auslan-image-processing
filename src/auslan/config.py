@@ -7,6 +7,9 @@ from pathlib import Path
 
 import yaml
 
+HAND_MODEL = "hand_landmarker.task"
+FACE_MODEL = "blaze_face_short_range.tflite"
+
 
 @dataclass(frozen=True)
 class Settings:
