@@ -34,6 +34,44 @@ def _landmarks(class_id: int, rng: np.random.Generator) -> np.ndarray:
     return points
 
 
+def _write_prepared(work_dir, name, per_split, seed, letters=("A", "B", "C")):
+    """Write a dataset in the layout `prepare` produces: catalog.csv, landmarks.npy, crops."""
+    rng = np.random.default_rng(seed)
+    folder = work_dir / name
+    (folder / "crops").mkdir(parents=True)
+    rows, landmarks = [], []
+    for split, per_class in per_split.items():
+        for class_id, letter in enumerate(letters):
+            for _ in range(per_class):
+                path = folder / "crops" / f"{len(rows):05d}.png"
+                cv2.imwrite(str(path), cv2.cvtColor(_draw(class_id, rng), cv2.COLOR_RGB2BGR))
+                rows.append((str(path), letter, name, split, str(path), 1, False, len(rows)))
+                landmarks.append(_landmarks(class_id, rng))
+    columns = [
+        "path",
+        "label",
+        "source",
+        "split",
+        "crop_path",
+        "n_hands",
+        "used_fallback",
+        "lm_index",
+    ]
+    pd.DataFrame(rows, columns=columns).to_csv(folder / "catalog.csv", index=False)
+    np.save(folder / "landmarks.npy", np.stack(landmarks))
+
+
+@pytest.fixture
+def prepared_work_dir(tmp_path):
+    """A tiny stand-in for the four prepared datasets (letters A, B, C only)."""
+    work_dir = tmp_path / "data" / "work"
+    _write_prepared(work_dir, "asl_alphabet", {"train": 8, "val": 3, "test": 3}, seed=1)
+    _write_prepared(work_dir, "asl_alphabet_test", {"test": 4}, seed=2)
+    _write_prepared(work_dir, "auslan_kaggle", {"train": 12, "val": 4, "test": 4}, seed=3)
+    _write_prepared(work_dir, "auslan_roboflow", {"test": 4}, seed=4)
+    return work_dir
+
+
 @pytest.fixture
 def make_sample_set(tmp_path):
     """Build a separable toy SampleSet; call as ``make_sample_set(n_classes, per_class, seed)``."""
