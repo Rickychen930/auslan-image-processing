@@ -51,6 +51,35 @@ uv run auslan report                     # tables under artifacts/report/
   without it.
 - `uv run auslan methods` lists the method names.
 
+## Live camera demo
+
+A small demo turns the trained models into the tutoring idea from the report: the camera shows
+what is recognised, and with a target letter it says **correct** or **wrong**.
+
+```bash
+uv run auslan export auslan-resnet          # train once (about 10 min): Auslan letters, whole frame
+uv run auslan export asl-landmarks          # optional: 24 ASL letters from hand landmarks (seconds)
+./start-auslan camera                       # open the camera with the Auslan model
+./start-auslan camera --target B            # practise B: green "Correct" or red "Not yet"
+./start-auslan camera --model asl-landmarks # the landmark model reads hands, not the whole frame
+```
+
+Keys in the window: a letter key sets the target, space clears it, Esc quits. The window shows the
+top three guesses, the image the model actually sees (bottom right of the preview, top right) and
+the frame rate. On macOS, allow your terminal under *System Settings > Privacy & Security >
+Camera* the first time.
+
+Things to know:
+
+- The preview is mirrored for comfort, but recognition always uses the unmirrored frame (a flip
+  would swap the two hands).
+- `auslan-resnet` learns from the Kaggle Auslan frames (one webcam setup, signers not identified),
+  so on your own camera it can be much less accurate than the held-out scores. That gap is exactly
+  what the Roboflow test measures. The camera loop itself could not be tested without a camera in
+  the development environment; the recogniser, the verdicts and the overlay are unit-tested.
+- Auslan letters use two hands, and MediaPipe cannot find them in the Kaggle drawings, so the
+  landmark model is only offered for ASL.
+
 ## Protocols and experiments
 
 | Protocol | Train | Test |
@@ -96,6 +125,7 @@ src/auslan/
   runner.py       one run under P1, P2 or P3
   experiments.py  E1 to E7 as lists of runs
   report/         result tables
+  live/           camera demo: export a model, recognise frames, draw the verdict
   cli.py          the `auslan` command
 tests/            unit tests and a toy end-to-end run on synthetic data
 docs/             setup, datasets, architecture, related work

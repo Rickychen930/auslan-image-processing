@@ -2,8 +2,14 @@
 # Build the result tables from artifacts/ and open them in the browser.
 #   ./start-auslan             build the report and open artifacts/report/index.html
 #   ./start-auslan --no-open   build it and only print the path
+#   ./start-auslan camera      live camera demo (extra options go to `auslan live`)
 set -euo pipefail
 cd "$(dirname "$0")"
+
+if [ "${1:-}" = "camera" ]; then
+    shift
+    exec uv run auslan live "$@"
+fi
 
 uv run auslan report
 page="$PWD/artifacts/report/index.html"

@@ -62,3 +62,12 @@ def test_unknown_label_raises(prepared):
     frame, landmarks = prepared
     with pytest.raises(KeyError):
         SampleSet(frame.assign(label="Q"), landmarks, SPACE, image_size=32)
+
+
+def test_a_camera_frame_can_be_wrapped_without_a_file():
+    frame = np.full((50, 80, 3), 200, np.uint8)
+    landmarks = np.zeros((2, 21, 3), np.float32)
+    ds = SampleSet.from_memory(frame, landmarks, SPACE, image_size=32, styled=True)
+    sample = ds[0]
+    assert len(ds) == 1 and sample.crop.shape == (32, 32, 3) and sample.binarised
+    assert ds.subset([0])[0].crop.shape == (32, 32, 3)

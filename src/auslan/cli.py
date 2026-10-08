@@ -16,6 +16,9 @@ from auslan.data.prepare import prepare_source
 from auslan.data.registry import dataset_specs
 from auslan.evaluation.speed import crop_ms
 from auslan.experiments import EXPERIMENTS, plan
+from auslan.live.camera import run_camera
+from auslan.live.export import PRESETS, export_model
+from auslan.live.recognizer import Recognizer, load_live_model
 from auslan.methods import method_names
 from auslan.preprocessing.factory import build_cropper
 from auslan.report import CROP_TIMING_FILE, build_report
@@ -98,6 +101,23 @@ def _report(settings: Settings, args: argparse.Namespace) -> None:
     log.info("report written to %s", folder)
 
 
+def _export(settings: Settings, args: argparse.Namespace) -> None:
+    path = export_model(settings, args.preset, args.seed)
+    log.info("saved %s; try it with `auslan live --model %s`", path, args.preset)
+
+
+def _live(settings: Settings, args: argparse.Namespace) -> None:
+    model = load_live_model(settings.artifacts_dir / "live" / f"{args.model}.joblib")
+    target = args.target.upper() if args.target else None
+    if target and target not in model.letters:
+        raise SystemExit(f"{target} is not one of this model's letters: {''.join(model.letters)}")
+    cropper = None
+    if model.input_mode == "hands":
+        cropper = build_cropper(settings.models_dir, "skin", settings.crop_size)
+    log.info("%s", model.description)
+    run_camera(Recognizer(model, cropper), model.letters, target, args.camera)
+
+
 def _methods(settings: Settings, args: argparse.Namespace) -> None:
     print("\n".join(method_names()))
 
@@ -124,6 +144,17 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--limit", type=int, help="only the first N runs")
     run.add_argument("--dry-run", action="store_true", help="list the runs and stop")
     run.set_defaults(handler=_run)
+
+    export = commands.add_parser("export", help="train a model for the live camera demo")
+    export.add_argument("preset", choices=list(PRESETS))
+    export.add_argument("--seed", type=int, default=0)
+    export.set_defaults(handler=_export)
+
+    live = commands.add_parser("live", help="recognise letters from the camera")
+    live.add_argument("--model", choices=list(PRESETS), default="auslan-resnet")
+    live.add_argument("--target", help="letter to practise; shows correct or wrong")
+    live.add_argument("--camera", type=int, default=0, help="camera index")
+    live.set_defaults(handler=_live)
 
     commands.add_parser("speed", help="time detection and cropping").set_defaults(handler=_speed)
     commands.add_parser("report", help="build the result tables").set_defaults(handler=_report)
