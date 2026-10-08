@@ -1,7 +1,7 @@
 import pytest
 
 from auslan.config import Settings
-from auslan.reporting import build_report
+from auslan.report import build_report
 from auslan.results import ResultStore, RunSpec
 from auslan.runner import Runner
 
@@ -28,7 +28,7 @@ def finished_runs(prepared_work_dir, tmp_path):
 
 def test_report_writes_every_table(finished_runs):
     store, settings = finished_runs
-    out = build_report(store, settings.artifacts_dir)
+    out = build_report(store, settings)
     for name in (
         "results.csv",
         "table9.md",
@@ -37,14 +37,22 @@ def test_report_writes_every_table(finished_runs):
         "confused_pairs.md",
         "significance.md",
         "success_criteria.md",
+        "cost.md",
+        "cross_dataset.md",
+        "variants.md",
+        "style_effect.md",
+        "image_size.md",
+        "detection_rates.md",
+        "confusion_m5_landmarks_mlp.csv",
     ):
         assert (out / name).stat().st_size > 0, name
 
 
 def test_headline_table_marks_methods_that_cannot_transfer(finished_runs):
     store, settings = finished_runs
-    table9 = (build_report(store, settings.artifacts_dir) / "table9.md").read_text()
-    lines = {line.split("|")[1].strip(): line for line in table9.splitlines()[2:]}
+    table9 = (build_report(store, settings) / "table9.md").read_text()
+    rows = [line for line in table9.splitlines() if line.startswith("|")][2:]  # skip header
+    lines = {line.split("|")[1].strip(): line for line in rows}
     assert set(lines) == set(METHODS)
     assert "(=P2)" in lines["m1_skin_svm"] and "n/a" in lines["m1_skin_svm"]
     assert "(=P2)" not in lines["m5_landmarks_mlp"] and "n/a" not in lines["m5_landmarks_mlp"]
@@ -52,11 +60,11 @@ def test_headline_table_marks_methods_that_cannot_transfer(finished_runs):
 
 def test_significance_covers_all_pairs_and_transfer_gain(finished_runs):
     store, settings = finished_runs
-    text = (build_report(store, settings.artifacts_dir) / "significance.md").read_text()
+    text = (build_report(store, settings) / "significance.md").read_text()
     assert text.count("| m") >= 3 * 2  # three method pairs, each names two methods
     assert "m5_landmarks_mlp" in text and "bootstrap" in text
 
 
 def test_report_without_results_fails_clearly(tmp_path):
     with pytest.raises(RuntimeError, match="no results"):
-        build_report(ResultStore(tmp_path), tmp_path)
+        build_report(ResultStore(tmp_path), Settings(artifacts_dir=tmp_path))
