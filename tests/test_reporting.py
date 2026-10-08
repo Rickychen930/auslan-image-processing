@@ -2,6 +2,7 @@ import pytest
 
 from auslan.config import Settings
 from auslan.report import build_report
+from auslan.report.html import markdown_to_html
 from auslan.results import ResultStore, RunSpec
 from auslan.runner import Runner
 
@@ -68,3 +69,17 @@ def test_significance_covers_all_pairs_and_transfer_gain(finished_runs):
 def test_report_without_results_fails_clearly(tmp_path):
     with pytest.raises(RuntimeError, match="no results"):
         build_report(ResultStore(tmp_path), Settings(artifacts_dir=tmp_path))
+
+
+def test_markdown_tables_headings_and_bullets_become_html():
+    text = "### Gain\n\n- **A**: [1, 2]\n\n| x | y |\n|---|---|\n| 1 | <b> |\n\nplain"
+    out = markdown_to_html(text)
+    assert "<h3>Gain</h3>" in out and "<li><strong>A</strong>: [1, 2]</li>" in out
+    assert "<th>x</th>" in out and "<td>&lt;b&gt;</td>" in out  # cell text is escaped
+    assert "<p>plain</p>" in out
+
+
+def test_report_includes_a_single_page_overview(finished_runs):
+    store, settings = finished_runs
+    page = (build_report(store, settings) / "index.html").read_text()
+    assert "<table>" in page and "m5_landmarks_mlp" in page and "Headline results" in page

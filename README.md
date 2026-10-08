@@ -41,6 +41,7 @@ uv run auslan run E1 --dry-run           # list the planned runs
 uv run auslan run E1                     # headline experiment: all methods, P1 / P2 / P3
 uv run auslan speed                      # time hand detection and cropping
 uv run auslan report                     # tables under artifacts/report/
+./start-auslan                           # build the report and open it as a web page
 ```
 
 - Runs are **resumable**: finished runs are skipped, so an interrupted `auslan run` can simply be
@@ -70,7 +71,8 @@ the runner skips it. The experiments of the report's Table 7 live in `src/auslan
 | E6 | `auslan run E1` | every P2/P3 run is also scored on Roboflow without the style transform |
 | E7 | `auslan run E7` | input size 224 / 64 / 32 against the default 128 |
 
-`auslan report` writes these files to `artifacts/report/`:
+`auslan report` writes these files to `artifacts/report/`; `./start-auslan` builds them and opens
+`index.html`, one page with all the tables (`./start-auslan --no-open` only prints the path):
 
 | File | Content |
 |------|---------|

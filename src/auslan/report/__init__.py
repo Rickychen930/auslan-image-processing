@@ -13,6 +13,7 @@ from auslan.data.classes import AUSLAN_LETTERS
 from auslan.report import tables
 from auslan.report.comparisons import confusions, significance
 from auslan.report.failures import detection_rates
+from auslan.report.html import render_index
 from auslan.results import ResultStore
 
 log = logging.getLogger(__name__)
@@ -50,6 +51,7 @@ def build_report(store: ResultStore, settings: Settings) -> Path:
     for method, matrix in matrices.items():
         frame = pd.DataFrame(matrix, index=list(AUSLAN_LETTERS), columns=list(AUSLAN_LETTERS))
         frame.to_csv(out / f"confusion_{method}.csv")
+    render_index(out)
     return out
 
 

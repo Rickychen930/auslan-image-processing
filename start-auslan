@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Build the result tables from artifacts/ and open them in the browser.
+#   ./start-auslan             build the report and open artifacts/report/index.html
+#   ./start-auslan --no-open   build it and only print the path
+set -euo pipefail
+cd "$(dirname "$0")"
+
+uv run auslan report
+page="$PWD/artifacts/report/index.html"
+echo "Report: $page"
+
+[ "${1:-}" = "--no-open" ] && exit 0
+if command -v open >/dev/null; then
+    open "$page"
+elif command -v xdg-open >/dev/null; then
+    xdg-open "$page"
+fi
