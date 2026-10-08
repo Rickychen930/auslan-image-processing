@@ -36,7 +36,9 @@ class SampleSet:
         self._label_space = label_space
         self._image_size = image_size
         self._transform = transform
-        self._labels = np.array([label_space.index(x) for x in self._frame["label"]], dtype=np.int64)
+        self._labels = np.array(
+            [label_space.index(x) for x in self._frame["label"]], dtype=np.int64
+        )
 
     def __len__(self) -> int:
         return len(self._frame)
@@ -85,5 +87,7 @@ class SampleSet:
             raise FileNotFoundError(f"cannot read crop: {path}")
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
         if rgb.shape[0] != self._image_size or rgb.shape[1] != self._image_size:
-            rgb = cv2.resize(rgb, (self._image_size, self._image_size), interpolation=cv2.INTER_AREA)
+            rgb = cv2.resize(
+                rgb, (self._image_size, self._image_size), interpolation=cv2.INTER_AREA
+            )
         return self._transform(rgb) if self._transform else rgb

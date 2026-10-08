@@ -75,13 +75,20 @@ class FullFrame:
         return None
 
 
+HSV_SKIN = (np.array([0, 30, 60], np.uint8), np.array([25, 255, 255], np.uint8))
+YCRCB_SKIN = (np.array([0, 133, 77], np.uint8), np.array([255, 173, 127], np.uint8))
+
+
+def skin_colour_mask(rgb: np.ndarray) -> np.ndarray:
+    """Pixels that fall inside both the HSV and the YCrCb skin ranges (0 or 255)."""
+    hsv = cv2.inRange(cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV), *HSV_SKIN)
+    ycrcb = cv2.inRange(cv2.cvtColor(rgb, cv2.COLOR_RGB2YCrCb), *YCRCB_SKIN)
+    return cv2.bitwise_and(hsv, ycrcb)
+
+
 class SkinRegions:
     """Fallback for colour images: the two largest skin-coloured blobs, with faces masked out."""
 
-    HSV_LOW = np.array([0, 30, 60], np.uint8)
-    HSV_HIGH = np.array([25, 255, 255], np.uint8)
-    YCRCB_LOW = np.array([0, 133, 77], np.uint8)
-    YCRCB_HIGH = np.array([255, 173, 127], np.uint8)
     MIN_AREA_FRACTION = 0.005
 
     def __init__(self, faces: FaceDetector | None = None) -> None:
@@ -106,9 +113,7 @@ class SkinRegions:
         return int(x0), int(y0), int(x1), int(y1)
 
     def _skin_mask(self, rgb: np.ndarray) -> np.ndarray:
-        hsv = cv2.inRange(cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV), self.HSV_LOW, self.HSV_HIGH)
-        ycrcb = cv2.inRange(cv2.cvtColor(rgb, cv2.COLOR_RGB2YCrCb), self.YCRCB_LOW, self.YCRCB_HIGH)
-        mask = cv2.bitwise_and(hsv, ycrcb)
+        mask = skin_colour_mask(rgb)
         if self._faces is not None:
             for x0, y0, x1, y1 in self._faces.faces(rgb):
                 mask[max(0, y0) : y1, max(0, x0) : x1] = 0
