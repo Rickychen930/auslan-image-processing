@@ -41,7 +41,7 @@ Keys*, and export the key in your shell. Never commit it:
 
 ```bash
 export ROBOFLOW_API_KEY="<your key>"
-uv run auslan download --roboflow --roboflow-version <N>   # N: the version number on the page
+uv run auslan download --roboflow                          # newest version; or add --roboflow-version 2
 ```
 
 ## Run

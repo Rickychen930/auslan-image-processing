@@ -10,6 +10,7 @@ import logging
 import os
 import shutil
 import tempfile
+import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -31,7 +32,7 @@ MODEL_URLS = {
     FACE_MODEL: f"{_MODEL_BASE}/face_detector/blaze_face_short_range/float16/latest/{FACE_MODEL}",
 }
 ROBOFLOW_API = "https://api.roboflow.com"
-ROBOFLOW_WORKSPACE, ROBOFLOW_PROJECT = "xbqqe", "auslan"
+ROBOFLOW_WORKSPACE, ROBOFLOW_PROJECT = "workspaces-xbqqe", "auslan"  # universe.roboflow.com/<both>
 ROBOFLOW_KEY_VARIABLE = "ROBOFLOW_API_KEY"
 
 
@@ -66,21 +67,56 @@ def download_models(models_dir: Path) -> None:
             _fetch(url, target)
 
 
-def download_roboflow(raw_dir: Path, version: int = 1) -> int:
+def download_roboflow(raw_dir: Path, version: int | None = None) -> int:
     """Export the Roboflow Auslan set as COCO and arrange it into one folder per letter.
 
-    Needs ``ROBOFLOW_API_KEY`` (a free Roboflow account is enough). Returns the image count.
+    Needs ``ROBOFLOW_API_KEY`` (a free Roboflow account is enough). Uses the newest version
+    unless one is given. Returns the image count.
     """
     api_key = os.environ.get(ROBOFLOW_KEY_VARIABLE)
     if not api_key:
         raise RuntimeError(f"set {ROBOFLOW_KEY_VARIABLE} first; see docs/DATASETS.md")
-    link = _roboflow_export_link(api_key, version)
+    version = version or _latest_version(api_key)
+    log.info("Roboflow %s/%s version %d", ROBOFLOW_WORKSPACE, ROBOFLOW_PROJECT, version)
+    link = _export_link(api_key, version)
     with tempfile.TemporaryDirectory() as scratch:
         archive = Path(scratch) / "export.zip"
         _fetch(link, archive)
         extracted = Path(scratch) / "coco"
         _safe_extract(archive, extracted)
         return organise_coco_by_class(extracted, Path(raw_dir) / "auslan_roboflow")
+
+
+def _api_get(path: str, api_key: str) -> dict:
+    url = f"{ROBOFLOW_API}/{path}?{urlencode({'api_key': api_key})}"
+    try:
+        with urllib.request.urlopen(url) as response:  # noqa: S310 - fixed https endpoint
+            return json.load(response)
+    except urllib.error.HTTPError as error:
+        # Raised without the original error, whose request URL contains the API key.
+        raise RuntimeError(
+            f"Roboflow answered HTTP {error.code} for /{path}; check the workspace, project and "
+            "version, and that the key is the private API key"
+        ) from None
+
+
+def _latest_version(api_key: str) -> int:
+    payload = _api_get(f"{ROBOFLOW_WORKSPACE}/{ROBOFLOW_PROJECT}", api_key)
+    versions = payload.get("versions") or payload.get("project", {}).get("versions") or []
+    numbers = [int(str(v.get("id", v.get("version", "0"))).rsplit("/", 1)[-1]) for v in versions]
+    if not numbers:
+        raise RuntimeError("Roboflow lists no versions; pass --roboflow-version")
+    return max(numbers)
+
+
+def _export_link(api_key: str, version: int) -> str:
+    payload = _api_get(f"{ROBOFLOW_WORKSPACE}/{ROBOFLOW_PROJECT}/{version}/coco", api_key)
+    link = payload.get("export", {}).get("link") or payload.get("version", {}).get(
+        "export", {}
+    ).get("link")
+    if not link:
+        raise RuntimeError("Roboflow returned no download link; check the version number")
+    return link
 
 
 def _fetch(url: str, target: Path) -> None:

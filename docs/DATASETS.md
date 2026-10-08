@@ -8,7 +8,7 @@ of the data is redistributed from this repository (`data/` is git-ignored).
 | `asl_alphabet` | ASL Alphabet, 87,000 images, 29 classes | [Kaggle `grassknoted/asl-alphabet`](https://www.kaggle.com/datasets/grassknoted/asl-alphabet) | 1.1 GB | GPL-2.0 | ASL training (P1, P3 pretraining) |
 | `asl_alphabet_test` | ASL Alphabet Test, 870 images on varied backgrounds | [Kaggle `danrasband/asl-alphabet-test`](https://www.kaggle.com/datasets/danrasband/asl-alphabet-test) | 25 MB | CC0 | ASL cross-dataset test (P1) |
 | `auslan_kaggle` | Auslan Fingerspelling, about 71,000 binarised images, 36 classes | [Kaggle `rithwikchhugani/auslan-sign-language-fingerspelling-dataset`](https://www.kaggle.com/datasets/rithwikchhugani/auslan-sign-language-fingerspelling-dataset) | 6.0 GB | not stated | Auslan training (P2, P3) |
-| `auslan_roboflow` | Roboflow Auslan, 352 photos with hand boxes | [Roboflow Universe `xbqqe/auslan`](https://universe.roboflow.com/xbqqe/auslan) | small | CC BY 4.0 (verify on the page) | independent Auslan test (P2, P3) |
+| `auslan_roboflow` | Roboflow Auslan, 352 photos with hand boxes | [Roboflow Universe `workspaces-xbqqe/auslan`](https://universe.roboflow.com/workspaces-xbqqe/auslan) | small | CC BY 4.0 (verify on the page) | independent Auslan test (P2, P3) |
 
 No Hugging Face or other mirror of these four exists; Kaggle and Roboflow are the only sources.
 The pipeline also needs two small MediaPipe models (Google, Apache-2.0), fetched by
@@ -19,7 +19,7 @@ The pipeline also needs two small MediaPipe models (Google, Apache-2.0), fetched
 ```bash
 uv run auslan download                                   # three Kaggle sets + MediaPipe models
 export ROBOFLOW_API_KEY="<your key>"                     # free account, never commit it
-uv run auslan download --roboflow --roboflow-version 1   # Roboflow, as COCO then sorted by letter
+uv run auslan download --roboflow                        # Roboflow, as COCO then sorted by letter
 ```
 
 To fetch Kaggle sets by hand instead: `kaggle datasets download -d <slug> -p data/raw/<name> --unzip`

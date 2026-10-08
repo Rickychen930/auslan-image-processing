@@ -68,3 +68,49 @@ def test_interrupted_download_leaves_no_file_behind(tmp_path, monkeypatch):
     with pytest.raises(OSError, match="connection lost"):
         download._fetch("https://example.invalid/model.task", target)
     assert not target.exists()
+
+
+def _fake_api(monkeypatch, responses):
+    """Make _api_get answer from a dict of path -> payload; unknown paths raise like a 404."""
+
+    def get(path, api_key):
+        if path not in responses:
+            raise RuntimeError(f"Roboflow answered HTTP 404 for /{path}")
+        return responses[path]
+
+    monkeypatch.setattr(download, "_api_get", get)
+
+
+def test_newest_roboflow_version_is_used_when_none_is_given(monkeypatch):
+    project = f"{download.ROBOFLOW_WORKSPACE}/{download.ROBOFLOW_PROJECT}"
+    _fake_api(
+        monkeypatch, {project: {"versions": [{"id": f"{project}/1"}, {"id": f"{project}/3"}]}}
+    )
+    assert download._latest_version("key") == 3
+
+
+def test_roboflow_without_versions_asks_for_one(monkeypatch):
+    project = f"{download.ROBOFLOW_WORKSPACE}/{download.ROBOFLOW_PROJECT}"
+    _fake_api(monkeypatch, {project: {"versions": []}})
+    with pytest.raises(RuntimeError, match="--roboflow-version"):
+        download._latest_version("key")
+
+
+def test_export_link_is_read_from_either_response_shape(monkeypatch):
+    path = f"{download.ROBOFLOW_WORKSPACE}/{download.ROBOFLOW_PROJECT}/2/coco"
+    _fake_api(monkeypatch, {path: {"export": {"link": "https://example.invalid/a.zip"}}})
+    assert download._export_link("key", 2).endswith("a.zip")
+    _fake_api(
+        monkeypatch, {path: {"version": {"export": {"link": "https://example.invalid/b.zip"}}}}
+    )
+    assert download._export_link("key", 2).endswith("b.zip")
+
+
+def test_api_errors_do_not_expose_the_key(monkeypatch):
+    def refuse(url, *args, **kwargs):
+        raise download.urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+
+    monkeypatch.setattr(download.urllib.request, "urlopen", refuse)
+    with pytest.raises(RuntimeError, match="404") as caught:
+        download._api_get("some/path", "SECRET-KEY")
+    assert "SECRET-KEY" not in str(caught.value) and caught.value.__cause__ is None

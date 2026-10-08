@@ -109,7 +109,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     get = commands.add_parser("download", help="fetch datasets and MediaPipe models")
     get.add_argument("--roboflow", action="store_true", help="also fetch Roboflow (needs a key)")
-    get.add_argument("--roboflow-version", type=int, default=1)
+    get.add_argument("--roboflow-version", type=int, help="default: the newest version")
     get.set_defaults(handler=_download)
 
     prep = commands.add_parser("prepare", help="de-duplicate, split and crop the datasets")
