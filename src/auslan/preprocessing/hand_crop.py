@@ -1,0 +1,162 @@
+"""Shared pre-processing: crop each image to the union of the detected hand boxes.
+
+The detector is injected (``HandDetector``), so the crop logic is testable without MediaPipe and
+the detection backend can change without touching callers (Dependency Inversion).
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import Protocol
+
+import cv2
+import numpy as np
+
+LANDMARKS_PER_HAND = 21
+MAX_HANDS = 2
+DEFAULT_PADDING = 0.20
+Box = tuple[int, int, int, int]  # x0, y0, x1, y1 in pixels
+
+
+@dataclass(frozen=True)
+class HandDetection:
+    hands: tuple[np.ndarray, ...]  # each (21, 3): x, y normalised to the image, z relative depth
+
+
+@dataclass(frozen=True)
+class CropResult:
+    crop: np.ndarray  # (size, size, 3) uint8
+    landmarks: np.ndarray  # (2, 21, 3) float32, ordered left to right by wrist, zero-filled
+    n_hands: int
+    used_fallback: bool
+
+
+class HandDetector(Protocol):
+    def detect(self, rgb: np.ndarray) -> HandDetection: ...
+
+
+class FaceDetector(Protocol):
+    def faces(self, rgb: np.ndarray) -> Sequence[Box]: ...
+
+
+class RegionFinder(Protocol):
+    def box(self, rgb: np.ndarray) -> Box | None:
+        """Pixel box of the region of interest, or ``None`` to keep the whole frame."""
+
+
+def _pad_box(box: Box, padding: float, height: int, width: int) -> Box:
+    x0, y0, x1, y1 = box
+    pad_x, pad_y = padding * (x1 - x0), padding * (y1 - y0)
+    return (
+        max(0, int(np.floor(x0 - pad_x))),
+        max(0, int(np.floor(y0 - pad_y))),
+        min(width, int(np.ceil(x1 + pad_x))),
+        min(height, int(np.ceil(y1 + pad_y))),
+    )
+
+
+def union_box(hands: Sequence[np.ndarray], padding: float, height: int, width: int) -> Box:
+    """Padded pixel box around all landmarks of all given hands, clamped to the image."""
+    points = np.concatenate([h[:, :2] for h in hands])
+    raw = (
+        int(np.floor(points[:, 0].min() * width)),
+        int(np.floor(points[:, 1].min() * height)),
+        int(np.ceil(points[:, 0].max() * width)),
+        int(np.ceil(points[:, 1].max() * height)),
+    )
+    return _pad_box(raw, padding, height, width)
+
+
+class FullFrame:
+    """Fallback for binarised images, where no skin or face can be told apart."""
+
+    def box(self, rgb: np.ndarray) -> Box | None:
+        return None
+
+
+class SkinRegions:
+    """Fallback for colour images: the two largest skin-coloured blobs, with faces masked out."""
+
+    HSV_LOW = np.array([0, 30, 60], np.uint8)
+    HSV_HIGH = np.array([25, 255, 255], np.uint8)
+    YCRCB_LOW = np.array([0, 133, 77], np.uint8)
+    YCRCB_HIGH = np.array([255, 173, 127], np.uint8)
+    MIN_AREA_FRACTION = 0.005
+
+    def __init__(self, faces: FaceDetector | None = None) -> None:
+        self._faces = faces
+
+    def box(self, rgb: np.ndarray) -> Box | None:
+        mask = self._skin_mask(rgb)
+        kernel = np.ones((3, 3), np.uint8)
+        mask = cv2.morphologyEx(
+            cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel), cv2.MORPH_CLOSE, kernel
+        )
+        _, _, stats, _ = cv2.connectedComponentsWithStats(mask)
+        min_area = self.MIN_AREA_FRACTION * mask.size
+        blobs = [s for s in stats[1:] if s[cv2.CC_STAT_AREA] >= min_area]
+        blobs = sorted(blobs, key=lambda s: s[cv2.CC_STAT_AREA], reverse=True)[:MAX_HANDS]
+        if not blobs:
+            return None
+        x0 = min(s[cv2.CC_STAT_LEFT] for s in blobs)
+        y0 = min(s[cv2.CC_STAT_TOP] for s in blobs)
+        x1 = max(s[cv2.CC_STAT_LEFT] + s[cv2.CC_STAT_WIDTH] for s in blobs)
+        y1 = max(s[cv2.CC_STAT_TOP] + s[cv2.CC_STAT_HEIGHT] for s in blobs)
+        return int(x0), int(y0), int(x1), int(y1)
+
+    def _skin_mask(self, rgb: np.ndarray) -> np.ndarray:
+        hsv = cv2.inRange(cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV), self.HSV_LOW, self.HSV_HIGH)
+        ycrcb = cv2.inRange(cv2.cvtColor(rgb, cv2.COLOR_RGB2YCrCb), self.YCRCB_LOW, self.YCRCB_HIGH)
+        mask = cv2.bitwise_and(hsv, ycrcb)
+        if self._faces is not None:
+            for x0, y0, x1, y1 in self._faces.faces(rgb):
+                mask[max(0, y0) : y1, max(0, x0) : x1] = 0
+        return mask
+
+
+class HandCropper:
+    """Detects hands, crops to their padded union and returns a square crop plus landmarks."""
+
+    def __init__(
+        self,
+        detector: HandDetector,
+        fallback: RegionFinder,
+        padding: float = DEFAULT_PADDING,
+        size: int = 224,
+    ) -> None:
+        if size <= 0:
+            raise ValueError("size must be positive")
+        self._detector = detector
+        self._fallback = fallback
+        self._padding = padding
+        self._size = size
+
+    def __call__(self, rgb: np.ndarray) -> CropResult:
+        height, width = rgb.shape[:2]
+        detected = self._detector.detect(rgb).hands[:MAX_HANDS]
+        hands = sorted(detected, key=lambda h: float(h[0, 0]))  # wrist x, not handedness label
+        if hands:
+            box, used_fallback = union_box(hands, self._padding, height, width), False
+        else:
+            region = self._fallback.box(rgb)
+            box = (
+                _pad_box(region, self._padding, height, width) if region else (0, 0, width, height)
+            )
+            used_fallback = True
+        landmarks = np.zeros((MAX_HANDS, LANDMARKS_PER_HAND, 3), np.float32)
+        for slot, hand in enumerate(hands):
+            landmarks[slot] = hand
+        return CropResult(self._square_crop(rgb, box), landmarks, len(hands), used_fallback)
+
+    def _square_crop(self, rgb: np.ndarray, box: Box) -> np.ndarray:
+        height, width = rgb.shape[:2]
+        x0, y0, x1, y1 = box
+        side = max(x1 - x0, y1 - y0, 1)
+        left = int(round((x0 + x1) / 2 - side / 2))
+        top = int(round((y0 + y1) / 2 - side / 2))
+        pad_l, pad_t = max(0, -left), max(0, -top)
+        pad_r, pad_b = max(0, left + side - width), max(0, top + side - height)
+        padded = cv2.copyMakeBorder(rgb, pad_t, pad_b, pad_l, pad_r, cv2.BORDER_REPLICATE)
+        patch = padded[top + pad_t : top + pad_t + side, left + pad_l : left + pad_l + side]
+        return cv2.resize(patch, (self._size, self._size), interpolation=cv2.INTER_AREA)
