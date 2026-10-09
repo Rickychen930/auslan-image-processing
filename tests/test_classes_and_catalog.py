@@ -13,10 +13,10 @@ def _write_image(path: Path, value: int = 0) -> None:
     Image.fromarray(np.full((8, 8, 3), value, np.uint8)).save(path)
 
 
-def test_asl_letters_drop_motion_letters():
-    assert len(ASL_LETTERS) == 24
-    assert "J" not in ASL_LETTERS and "Z" not in ASL_LETTERS
-    assert len(AUSLAN_LETTERS) == 26
+def test_both_languages_drop_motion_letters():
+    for letters in (ASL_LETTERS, AUSLAN_LETTERS):
+        assert len(letters) == 24
+        assert "J" not in letters and "Z" not in letters
 
 
 @pytest.mark.parametrize(

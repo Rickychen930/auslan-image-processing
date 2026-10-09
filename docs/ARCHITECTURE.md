@@ -141,7 +141,7 @@ flowchart LR
         A3[test 15%]
     end
     A4[ASL Alphabet Test]
-    subgraph AUS [Kaggle Auslan, 26 letters]
+    subgraph AUS [Kaggle Auslan, 24 letters]
         K1[train 70%<br/>k per letter drawn]
         K2[val 15%<br/>10 per letter used]
         K3[test 15%]

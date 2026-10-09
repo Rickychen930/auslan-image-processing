@@ -62,7 +62,7 @@ def test_p2_draws_k_per_letter_and_scores_three_test_sets(setup):
     assert (table["n_train"] == 15).all()
     assert (table["macro_f1"] > 0.8).all()  # the toy letters are easy to tell apart
     y_true, proba = store.predictions("m5_landmarks_svm-P2-k5-s0", "roboflow")
-    assert proba.shape == (12, 26) and len(y_true) == 12
+    assert proba.shape == (12, 24) and len(y_true) == 12  # one column per Auslan letter
 
 
 def test_landmark_methods_are_skipped_when_no_hands_are_found_in_training(setup):

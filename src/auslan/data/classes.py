@@ -9,7 +9,9 @@ LETTERS: tuple[str, ...] = tuple(string.ascii_uppercase)
 _MOTION_LETTERS = frozenset("JZ")  # need movement; single-frame images cannot show them
 
 ASL_LETTERS: tuple[str, ...] = tuple(c for c in LETTERS if c not in _MOTION_LETTERS)
-AUSLAN_LETTERS: tuple[str, ...] = LETTERS
+# Team decision after Task 1: Auslan drops J and Z too, so both languages share 24 letters.
+# The handshapes still differ, so P3 keeps a new output layer.
+AUSLAN_LETTERS: tuple[str, ...] = ASL_LETTERS
 
 
 def letter_from_name(name: str) -> str | None:

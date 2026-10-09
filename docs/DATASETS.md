@@ -40,8 +40,9 @@ catalog scanner only looks at the name of each image's parent folder.
 - **ASL Alphabet Test**: the same letters, 30 per class, on varied backgrounds. The Kaggle download
   unpacks every image twice (a nested copy); the exact-duplicate step removes the copy.
 - **Auslan Kaggle**: 500 x 300 greyscale webcam frames of a person signing with both hands, already
-  blurred and binarised into an edge-like drawing (`dataset_R_G_blur/<CLASS>/<n>.jpg`). Digits are
-  dropped, keeping 26 letters. Signers are not identified.
+  blurred and binarised into an edge-like drawing (`dataset_R_G_blur/<CLASS>/<n>.jpg`). Digits and
+  the motion letters J and Z are dropped, keeping the same 24 letters as ASL. Signers are not
+  identified.
 - **Roboflow Auslan**: colour photos of two-handed letters from a different source. Its images pass
   through the same hand crop; the style transform T (greyscale, blur, adaptive threshold) makes them
   resemble the Kaggle drawings for the main test, and E6 also scores them without T.
@@ -63,8 +64,8 @@ Each stage is cached under `data/work/<name>/` (`hashed.csv`, `crops/`, `chunks/
 |---------|--------------------------|----------------------|--------------------|------------|---------------|
 | `asl_alphabet` | 72,000 | 16,980 | 11,886 / 2,547 / 2,547 | 583 to 865 | 21.5% |
 | `asl_alphabet_test` | 1,440 (every image twice) | 704 | test only | 27 to 30 | 3.7% |
-| `auslan_kaggle` | 51,263 | 11,913 | 8,339 / 1,787 / 1,787 | 356 to 691 (train: 249 to 484) | 100% |
-| `auslan_roboflow` | not downloaded yet | | test only | | |
+| `auslan_kaggle` | 47,263 | 11,028 | 7,719 / 1,654 / 1,655 | 356 to 691 (train: 249 to 484) | 100% |
+| `auslan_roboflow` | 274 (version 18 without J and Z) | 250 | test only | 7 to 25 | 0% |
 
 - The near-duplicate step (perceptual hash within 4 of 64 bits) is strict on purpose: consecutive
   video frames would otherwise land in both train and test. It is the reason "all data" is about

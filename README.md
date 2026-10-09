@@ -86,7 +86,7 @@ Things to know:
 |----------|-------|------|
 | P1 | ASL Alphabet (24 letters) | held-out ASL split and ASL Alphabet Test |
 | P2 | `k` Kaggle Auslan images per letter, learned from scratch (M4 keeps its ImageNet weights) | held-out Kaggle split and Roboflow Auslan |
-| P3 | as P2, but starting from the weights learned on ASL (new 26-class output layer) | as P2 |
+| P3 | as P2, but starting from the weights learned on ASL (new 24-class output layer) | as P2 |
 
 Hand-crafted methods (M1, M2, M5 SVM/RF) cannot reuse ASL training, so for them P3 equals P2 and
 the runner skips it. The experiments of the report's Table 7 live in `src/auslan/experiments.py`:
@@ -152,9 +152,11 @@ differs, so they can be reported honestly.
 
 | Topic | What the code does | Why |
 |-------|--------------------|-----|
+| Letters | Auslan also drops J and Z, so both languages use the same 24 letters; chance is 1/24 = 4.2%, not 3.8% | team decision after Task 1: J and Z involve movement, which one image cannot show (the report's reason for dropping them from ASL). The handshapes still differ, so P3 keeps a new output layer |
+| Roboflow size | version 18 of the project: 300 of its 352 images (those with a hand box), 274 without J and Z, 250 after removing near-duplicates | the newest version; Roboflow leaves out images without annotations |
 | Image size | CNNs read 128 x 128 crops by default; E7 covers 224, 64, 32 | the report's risk register allows it for laptop-sized training |
 | Training budget | neural networks train for at most 1,000 steps (about 5 epochs of ASL), M3 for 3,000, with early stopping on the validation images; the classical methods choose C or k on the same images | M3's validation F1 was still rising at 1,000 steps (0.81 against 0.97 at 3,000); fine-tuned networks converge within 1,000 |
-| Amount of data | the near-duplicate step (4 of 64 hash bits) leaves about 16,980 ASL images and 11,913 Kaggle Auslan images, so "all data" is roughly 320 images per letter instead of 1,400 | consecutive video frames are nearly identical; keeping them would leak between splits |
+| Amount of data | the near-duplicate step (4 of 64 hash bits) leaves 16,980 ASL images and 11,028 Kaggle Auslan images, so "all data" is roughly 320 images per letter instead of 1,400 | consecutive video frames are nearly identical; keeping them would leak between splits |
 | M5 on Kaggle drawings | MediaPipe finds no hand in the binarised Kaggle images, so M5 is reported under P1 only | the case the report's risk register describes; `detection_rates.md` has the numbers |
 | M1 on Roboflow | its headline test uses the colour photo ("Roboflow before T" in the report); the other methods see the styled image | skin thresholds need colour |
 | Not implemented | M1 adaptive thresholds and one-versus-two-region masks, M2 full-frame input, M4 nearest-class-mean, the OpenPose fallback, example images for S5, the check of crops against the Roboflow boxes | optional alternatives in the report; E5 covers the others |

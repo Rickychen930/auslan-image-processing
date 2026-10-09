@@ -9,7 +9,7 @@
 | Tooling | [uv](https://docs.astral.sh/uv/) |
 | Disk | about 20 GB free: 7.2 GB of downloads, plus prepared crops |
 | Accounts | a free Kaggle account; a free Roboflow account for the independent test set |
-| Time | `prepare` takes about an hour; E1 takes several hours on a laptop |
+| Time | `prepare` took about 4 minutes on an M2 Pro (all four datasets); E1 takes several hours on a laptop |
 
 Python packages are pinned in `uv.lock`. `requirements.txt` and `requirements-dev.txt` are exports
 of the same versions for people who prefer `pip`.
@@ -26,15 +26,16 @@ With pip instead of uv:
 
 ```bash
 python3.12 -m venv .venv && source .venv/bin/activate
-pip install -r requirements-dev.txt && pip install -e . --no-deps
+pip install -r requirements.txt -r requirements-dev.txt && pip install -e . --no-deps
 ```
 
 ## Credentials
 
-**Kaggle** (three datasets). Create a token under *Kaggle → Settings → API*, then either save the
-downloaded `kaggle.json` to `~/.kaggle/kaggle.json` (`chmod 600`) or export `KAGGLE_USERNAME` and
-`KAGGLE_KEY`. The `auslan-sign-language-fingerspelling-dataset` page may ask you to accept its
-terms once in the browser.
+**Kaggle** (three datasets). Under *Kaggle → Settings → API*, choose *Generate New Token* and
+save it to `~/.kaggle/access_token` (`chmod 600`) or export it as `KAGGLE_API_TOKEN`. A legacy
+`kaggle.json` in `~/.kaggle/`, or `KAGGLE_USERNAME` with `KAGGLE_KEY`, also works. The
+`auslan-sign-language-fingerspelling-dataset` page may ask you to accept its terms once in the
+browser.
 
 **Roboflow** (the independent Auslan test set). Sign in at roboflow.com, open *Settings → API
 Keys*, and export the key in your shell. Never commit it:
@@ -56,6 +57,7 @@ uv run auslan report              # artifacts/report/
 
 All settings live in `src/auslan/config.py`; override any of them with a YAML file
 (`uv run auslan --config configs/default.yaml run E1`). Unknown keys are rejected.
+
 
 ## Hardware notes
 
