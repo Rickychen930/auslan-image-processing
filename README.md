@@ -9,7 +9,9 @@ the question set in the Task 1 report:
 Five method families are trained and tested under one shared pipeline, so differences in the
 results come from the methods and not from data handling.
 
-**Results so far:** [results/e1/](results/e1/README.md) (experiment E1, Table 9, success criteria).
+**Results:** one folder per person's run, `results/<name>/<experiment>/` (a copy of
+`artifacts/report/` plus `artifacts/results.jsonl` and a short README saying what was run where).
+So far: [Brian, E1](results/brian/e1/README.md) (Table 9, success criteria).
 
 | ID | Method | Registry names |
 |----|--------|----------------|

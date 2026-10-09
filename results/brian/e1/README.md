@@ -1,4 +1,4 @@
-# E1 results (run on 8–9 October 2026)
+# Brian's test: E1 results (run on 8–9 October 2026)
 
 Headline experiment E1: every core method under P1, P2 and P3, k=20 with seeds 0, 1 and 2, plus
 P2/P3 on all Kaggle data with seed 0. Produced by `auslan run E1`, `auslan speed` and
