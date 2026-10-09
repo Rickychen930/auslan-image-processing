@@ -9,6 +9,8 @@ the question set in the Task 1 report:
 Five method families are trained and tested under one shared pipeline, so differences in the
 results come from the methods and not from data handling.
 
+**Results so far:** [results/e1/](results/e1/README.md) (experiment E1, Table 9, success criteria).
+
 | ID | Method | Registry names |
 |----|--------|----------------|
 | M1 | Skin / edge-map segmentation, shape features (Hu moments, convexity), kNN or SVM | `m1_skin_svm`, `m1_skin_knn` |
