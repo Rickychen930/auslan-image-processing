@@ -9,7 +9,7 @@ import numpy as np
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision
 
-from auslan.preprocessing.hand_crop import MAX_HANDS, Box, HandDetection
+from auslan.preprocessing.hand_crop import DETECT_HANDS, Box, HandDetection
 
 DEFAULT_CONFIDENCE = 0.3  # permissive: blurred or occluded two-handed signs score low
 
@@ -19,12 +19,12 @@ def _as_mp_image(rgb: np.ndarray) -> mp.Image:
 
 
 class MediaPipeHandDetector:
-    """Hand landmarks (21 points per hand, up to two hands) via the Tasks HandLandmarker."""
+    """Hand landmarks (21 points per hand, up to four hands) via the Tasks HandLandmarker."""
 
     def __init__(self, model_path: Path, confidence: float = DEFAULT_CONFIDENCE) -> None:
         options = vision.HandLandmarkerOptions(
             base_options=mp_python.BaseOptions(model_asset_path=str(model_path)),
-            num_hands=MAX_HANDS,
+            num_hands=DETECT_HANDS,
             min_hand_detection_confidence=confidence,
             min_hand_presence_confidence=confidence,
         )

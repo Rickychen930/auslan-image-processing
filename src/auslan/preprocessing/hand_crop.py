@@ -14,6 +14,11 @@ import numpy as np
 
 LANDMARKS_PER_HAND = 21
 MAX_HANDS = 2
+# Look for more hands than are kept: Roboflow frames often show a second signer or a close-up
+# inset, and the crop must cover the two hands of one signer, not one hand from each.
+DETECT_HANDS = 4
+MAX_PAIR_SIZE_RATIO = 2.0  # one signer's hands are of similar size (99% of 2-hand frames: < 2)
+MAX_PAIR_GAP = 3.0  # wrist distance in hand sizes (99% of 2-hand frames: < 2.3)
 DEFAULT_PADDING = 0.20
 Box = tuple[int, int, int, int]  # x0, y0, x1, y1 in pixels
 
@@ -65,6 +70,36 @@ def union_box(hands: Sequence[np.ndarray], padding: float, height: int, width: i
         int(np.ceil(points[:, 1].max() * height)),
     )
     return _pad_box(raw, padding, height, width)
+
+
+def signer_hands(hands: Sequence[np.ndarray], height: int, width: int) -> list[np.ndarray]:
+    """The hands of one signer: the largest plausible pair, else the largest single hand.
+
+    Hands are paired greedily by wrist distance, so two signers side by side are not mixed up;
+    a pair must be of similar size and close together. The largest pair is the signer nearest
+    the camera, or the close-up inset of a teaching video.
+    """
+    if len(hands) <= 1:
+        return list(hands)
+    pixels = np.array([width, height], np.float32)
+    points = [h[:, :2] * pixels for h in hands]
+    sizes = [float(np.hypot(*(p.max(0) - p.min(0)))) or 1.0 for p in points]
+    candidates = []
+    for i in range(len(hands)):
+        for j in range(i + 1, len(hands)):
+            small, large = sorted((sizes[i], sizes[j]))
+            gap = float(np.linalg.norm(points[i][0] - points[j][0])) / ((small + large) / 2)
+            if large / small <= MAX_PAIR_SIZE_RATIO and gap <= MAX_PAIR_GAP:
+                candidates.append((gap, i, j))
+    pairs, used = [], set()
+    for _, i, j in sorted(candidates):
+        if i not in used and j not in used:
+            pairs.append((i, j))
+            used.update((i, j))
+    if pairs:
+        i, j = max(pairs, key=lambda pair: sizes[pair[0]] + sizes[pair[1]])
+        return [hands[i], hands[j]]
+    return [hands[int(np.argmax(sizes))]]
 
 
 class FullFrame:
@@ -138,7 +173,7 @@ class HandCropper:
 
     def __call__(self, rgb: np.ndarray) -> CropResult:
         height, width = rgb.shape[:2]
-        detected = self._detector.detect(rgb).hands[:MAX_HANDS]
+        detected = signer_hands(self._detector.detect(rgb).hands, height, width)
         hands = sorted(detected, key=lambda h: float(h[0, 0]))  # wrist x, not handedness label
         landmarks = np.zeros((MAX_HANDS, LANDMARKS_PER_HAND, 3), np.float32)
         # MediaPipe gives x and z as fractions of the width and y of the height. Rescale x and z
