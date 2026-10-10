@@ -6,6 +6,7 @@ from auslan.preprocessing.hand_crop import (
     HandCropper,
     HandDetection,
     SkinRegions,
+    signer_hands,
     union_box,
 )
 
@@ -52,6 +53,29 @@ def test_extra_detections_are_truncated_to_two():
     rgb = np.zeros((50, 50, 3), np.uint8)
     hands = [_hand(0.2, 0.5), _hand(0.5, 0.5), _hand(0.8, 0.5)]
     assert HandCropper(FakeDetector(hands), FullFrame(), size=16)(rgb).n_hands == 2
+
+
+def test_two_signers_are_not_mixed():
+    # Two signers side by side: the crop keeps both hands of one of them, never one of each.
+    left = [_hand(0.15, 0.5, 0.04), _hand(0.27, 0.5, 0.04)]
+    right = [_hand(0.73, 0.5, 0.04), _hand(0.85, 0.5, 0.04)]
+    chosen = signer_hands([left[0], right[0], left[1], right[1]], height=100, width=100)
+    xs = sorted(float(h[0, 0]) for h in chosen)
+    assert len(chosen) == 2 and (xs[1] < 0.5 or xs[0] > 0.5)
+
+
+def test_close_up_inset_beats_small_full_body_signer():
+    small = [_hand(0.2, 0.6, 0.03), _hand(0.28, 0.6, 0.03)]
+    inset = [_hand(0.65, 0.4, 0.08), _hand(0.85, 0.4, 0.08)]
+    chosen = signer_hands([*small, *inset], height=100, width=100)
+    assert sorted(float(h[0, 0]) for h in chosen) == sorted(float(h[0, 0]) for h in inset)
+
+
+def test_hands_too_far_apart_or_too_different_keep_the_largest():
+    big, far = _hand(0.2, 0.5, 0.06), _hand(0.9, 0.5, 0.06)
+    tiny = _hand(0.3, 0.5, 0.01)
+    chosen = signer_hands([far, big, tiny], height=100, width=200)
+    assert len(chosen) == 1
 
 
 def test_no_hand_uses_full_frame_fallback():
