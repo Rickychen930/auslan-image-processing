@@ -1,0 +1,7 @@
+arm,m3_cnn,m4_resnet18
+A  Auslan from scratch,0.826,8.438
+B  ASL -> Auslan -> Roboflow,1.432,10.482
+C  BSL -> Auslan -> Roboflow,1.12,15.422
+D  BSL -> Roboflow,3.486,23.906
+"D* BSL -> Roboflow (styled, diagnostic)",0.682,0.999
+E  ASL -> Roboflow,1.933,3.934
