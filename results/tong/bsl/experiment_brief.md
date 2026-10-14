@@ -13,7 +13,7 @@ Only the training route differs.
 |---|---|---|---|---|
 | **Before** — baseline | *(none)* | Kaggle Auslan — **line drawings** | Roboflow — photos | 8.44 ± 3.61 |
 | **Before** — our original transfer | **ASL** — one-handed photos | Kaggle Auslan — **line drawings** | Roboflow — photos | 10.48 ± 2.88 |
-| **After** — swap the source | **BSL** — two-handed photos | Kaggle Auslan — **line drawings** | Roboflow — photos | 15.42 ± 0.97 |
+| **After** — swap the source | **BSL** — two-handed photos | Kaggle Auslan — **line drawings** | Roboflow — photos | 14.27 ± 1.64 |
 | **After** — skip the drawings | **BSL** — two-handed photos | *(nothing — straight to test)* | Roboflow — photos | **23.91 ± 1.93** |
 | **Control** — skip them with ASL | **ASL** — one-handed photos | *(nothing — straight to test)* | Roboflow — photos | **3.93 ± 1.06** |
 
@@ -28,13 +28,13 @@ The control exists so the two changes can be told apart. It makes the whole thin
 |  | via Kaggle Auslan | straight to Roboflow |
 |---|---|---|
 | **ASL** source | 10.48 ± 2.88 | **3.93 ± 1.06** |
-| **BSL** source | 15.42 ± 0.97 | **23.91 ± 1.93** |
+| **BSL** source | 14.27 ± 1.64 | **23.91 ± 1.93** |
 
 **The two changes interact — the route that helps one source ruins the other.**
 
 | Change | With an ASL source | With a BSL source |
 |---|---|---|
-| Remove Kaggle Auslan from the chain | 10.48 → 3.93 (**−6.6**) | 15.42 → 23.91 (**+8.5**) |
+| Remove Kaggle Auslan from the chain | 10.48 → 3.93 (**−6.6**) | 14.27 → 23.91 (**+9.6**) |
 
 ---
 
@@ -63,7 +63,12 @@ because nothing transferable existed. Everything the original pipeline achieved 
 Kaggle Auslan fine-tune, not from the ASL pretraining.
 
 **A matched alphabet makes the Auslan data optional.** BSL reaches 23.91 having never seen a
-single Auslan training image. Passing it through the drawings *costs* it 8.5 points.
+single Auslan training image. Passing it through the drawings *costs* it 9.6 points.
+
+**BSL beats ASL through the drawings too, but modestly.** 14.27 against 10.48, higher in every
+seed (+4.5, +4.6, +2.2; paired across seeds, p = 0.04). That is a consistent direction rather
+than a large effect — the smallest gap is close to the run-to-run noise, and three seeds is a
+small sample.
 
 **So the drawings are not simply bad.** They are the only thing keeping an ASL source above
 chance, and the main thing holding a BSL source back. Which answer you get depends on what you
@@ -93,6 +98,9 @@ Each was hidden by the one above it, which is why three experiments were needed 
   null result, not a comparison.
 - The "straight to Roboflow" arms use the 23 letters BSL and Auslan share; the "via Kaggle
   Auslan" arms use our usual 24. Chance differs by 0.1 points, but the tasks are not identical.
+- Arm C is tuned on 10 Auslan images per letter, exactly as arms A and B are in `runner.py`, so
+  the three are like-for-like. An earlier version tuned arm C on the whole validation split
+  (seven times more labelled data) and overstated it at 15.42.
 - Training on CUDA is not bit-reproducible: repeated runs of the same seed moved arm C by up to
   1.7 points. All figures are means over three seeds for that reason.
 - The Roboflow test set is 242–250 images over 23–24 classes, so roughly ten per letter.
