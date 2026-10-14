@@ -37,7 +37,11 @@ JITTER = 0.2  # brightness, contrast and saturation vary by up to this fraction
 
 
 def default_device() -> str:
-    return "mps" if torch.backends.mps.is_available() else "cpu"
+    if torch.cuda.is_available():
+        return "cuda"
+    if torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
 
 
 class TorchClassifier:
